@@ -8,8 +8,10 @@
 |---|---|---|
 | [01_linear_regression](01_linear_regression/) | 手写线性回归（PyTorch 自动求导 + 手动梯度更新） | [从零看懂PyTorch手写线性回归.md](01_linear_regression/从零看懂PyTorch手写线性回归.md) |
 | [02_covid_regression](02_covid_regression/) | COVID 神经网络回归（Dataset / DataLoader / nn.Module / 优化器） | [从零看懂PyTorch_COVID神经网络回归.md](02_covid_regression/从零看懂PyTorch_COVID神经网络回归.md) |
+| [03_food_classification](03_food_classification/) | Food-11 图像分类（CNN / 图像增强 / ResNet / 半监督学习） | [从零看懂PyTorch_Food11图像分类.md](03_food_classification/从零看懂PyTorch_Food11图像分类.md) |
 
 ## 学习资料
 
 - [Python 语法速补](Python语法速补.md) —— 本项目代码用到的所有进阶 Python 语法（类、魔法方法、with、yield 等），从零讲起
+- 建议按照 `01 → 02 → 03` 的顺序学习
 - 先补语法，再读项目笔记，最后动手改代码

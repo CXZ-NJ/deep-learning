@@ -5,3 +5,20 @@
 # Python
 __pycache__/
 *.pyc
+
+# Food-11 / FashionMNIST 等本地数据集
+03_food_classification/food-11/
+03_food_classification/food-11_sample/
+03_food_classification/FashionMnist/
+03_food_classification/data/food-11/
+
+# 模型和运行生成文件
+03_food_classification/model_save/
+03_food_classification/checkpoints/*
+!03_food_classification/checkpoints/README.md
+*.pth
+*.pt
+
+# 运行时可能生成的新曲线；仓库中已有的示例图仍可保留
+03_food_classification/assets/training_curves.png
+03_food_classification/assets/simple_training_curves.png
