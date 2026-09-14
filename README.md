@@ -8,7 +8,7 @@
 |---|---|---|
 | [01_linear_regression](01_linear_regression/) | 手写线性回归（PyTorch 自动求导 + 手动梯度更新） | [从零看懂PyTorch手写线性回归.md](01_linear_regression/从零看懂PyTorch手写线性回归.md) |
 | [02_covid_regression](02_covid_regression/) | COVID 神经网络回归（Dataset / DataLoader / nn.Module / 优化器） | [从零看懂PyTorch_COVID神经网络回归.md](02_covid_regression/从零看懂PyTorch_COVID神经网络回归.md) |
-| [03_food_classification](03_food_classification/) | Food-11 图像分类（CNN / 图像增强 / ResNet / 半监督学习） | [从零看懂PyTorch_Food11图像分类.md](03_food_classification/从零看懂PyTorch_Food11图像分类.md) |
+| [03_food_classification](03_food_classification/) | Food-11 图像分类（CNN / 数据增强 / 迁移学习 / 半监督学习） | [从零看懂PyTorch_Food11图像分类.md](03_food_classification/从零看懂PyTorch_Food11图像分类.md) |
 
 ## 学习资料
 

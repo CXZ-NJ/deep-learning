@@ -1,333 +1,409 @@
-# 从神经网络回归到 CNN：用 PyTorch 完成 Food-11 图像分类
+# 从神经网络回归到图像分类：用 PyTorch 完成 Food-11 项目
 
-> 对应代码：先读 `simple_class.py`，再读 `main.py` 和 `model_utils/`。  
-> 适合读者：已经学过本仓库的手写线性回归和 COVID 神经网络回归，但还没有系统学过图片分类。  
-> 本文目标：不默认你了解计算机视觉，从“图片为什么能交给神经网络”开始，逐步看懂数据读取、图像增强、卷积网络、交叉熵、准确率、验证、模型保存、迁移学习和半监督学习。  
-> 学习建议：第一次只运行 `simple_class.py`。基础流程看懂以后，再运行模块化的 `main.py`。
+> 对应项目：`simple_class.py`、`main.py` 和 `model_utils/`  
+> 适合读者：已经读过本仓库的手写线性回归和 COVID 神经网络回归，目前第一次学习 CNN 和图像分类。  
+> 本文原则：按照你跟着博主写下来的代码讲，不重新发明一套陌生框架。代码中只修复会报错、路径失效或影响上传的问题。  
+> 阅读顺序：先看 `simple_class.py`，再看拆分后的 `main.py + model_utils`。
 
 ---
 
 ## 目录
 
-1. 这个项目在做什么？
-2. 它和前两个项目是什么关系？
-3. 回归和分类到底有什么区别？
-4. Food-11 数据集是什么？
-5. 先认识项目目录
-6. 图片在计算机里到底是什么？
-7. 高、宽、通道与 shape
-8. 为什么 PyTorch 的图片 shape 是 `[C, H, W]`？
-9. 为什么所有图片要变成统一大小？
-10. 第一次理解图像变换 transforms
-11. `RandomResizedCrop` 是什么？
-12. `RandomHorizontalFlip` 是什么？
-13. `AutoAugment` 是什么？
-14. `ToTensor` 做了什么？
-15. `Normalize` 为什么需要均值和标准差？
-16. 训练集和验证集为什么使用不同变换？
-17. `FoodDataset` 的职责
-18. 为什么只保存图片路径，而不把所有图片一次读进内存？
-19. 如何从目录名得到类别标签？
-20. `__getitem__()` 如何读取一张图片？
-21. 标签为什么必须是 `LongTensor`？
-22. DataLoader 如何组成一个 batch？
-23. CNN 为什么适合图片？
-24. `Conv2d` 的五个重要参数
-25. 输入通道和输出通道是什么？
-26. BatchNorm、ReLU 和 MaxPool
-27. `AdaptiveAvgPool2d` 解决了什么问题？
-28. 为什么最后还需要全连接层？
-29. 一张图片经过 SimpleCNN 时 shape 如何变化？
-30. 模型输出的 11 个数字是什么？
-31. Softmax 如何把输出变成概率？
-32. 为什么训练时不用手动调用 Softmax？
-33. `CrossEntropyLoss` 是什么？
-34. 训练一个 batch 的完整过程
-35. 如何计算分类准确率？
-36. `model.train()` 和 `model.eval()`
-37. 验证阶段为什么使用 `torch.no_grad()`？
-38. 为什么保存验证集上最好的模型？
-39. 修复后的 checkpoint 保存了什么？
-40. 为什么训练曲线保存为图片而不是弹窗？
-41. `simple_class.py` 的完整流程
-42. 为什么还要拆成 `main.py + model_utils`？
-43. ResNet18 和迁移学习
-44. 什么是 linear probing？
-45. 什么是半监督学习和伪标签？
-46. 原项目中修复了哪些问题？
-47. 如何安装与运行？
-48. 常见报错怎么处理？
-49. 初学者建议做的实验
-50. 完整知识地图
-51. 学完以后下一步学什么？
+1. 这个项目到底在做什么？
+2. 它和前两个项目有什么联系？
+3. 回归与分类有什么区别？
+4. Food-11 的 11 个类别
+5. 训练集、验证集、测试集和无标签集
+6. 项目中各文件负责什么？
+7. 图片在计算机里是什么？
+8. 图片 shape：H、W、C
+9. 为什么要把图片变成 224×224？
+10. transform 是什么？
+11. 训练集的数据增强
+12. 验证集为什么不做随机增强？
+13. `food_Dataset` 是什么？
+14. `__init__()` 如何准备数据？
+15. `read_file()` 如何读取有标签图片？
+16. 如何从文件夹得到类别标签？
+17. 如何读取无标签图片？
+18. `__getitem__()` 返回什么？
+19. 标签为什么必须是 LongTensor？
+20. DataLoader 如何组成 batch？
+21. `myModel` 的整体结构
+22. 什么是卷积层？
+23. `Conv2d(3, 64, 3, 1, 1)` 逐项解释
+24. BatchNorm、ReLU 与 MaxPool
+25. 图片经过模型时 shape 如何变化？
+26. 为什么要展平？
+27. 为什么最后输出 11 个数字？
+28. logits、Softmax 和概率
+29. CrossEntropyLoss 是什么？
+30. 训练循环逐行理解
+31. 分类准确率怎么计算？
+32. 验证流程逐行理解
+33. 为什么保存最佳模型？
+34. VGG、ResNet 与迁移学习
+35. `main.py` 如何把模块连接起来？
+36. 半监督学习和伪标签
+37. 原代码修复了什么？
+38. 如何运行项目？
+39. 常见错误
+40. 初学者实验
+41. 完整知识地图
+42. 一句话总结
 
 ---
 
-# 1. 这个项目在做什么？
+# 1. 这个项目到底在做什么？
 
-假设我们给程序一张食物图片：
+上一份 COVID 项目是根据 93 个数字预测一个连续数值。
+
+这次输入不再是一排 CSV 数字，而是一张食物图片。
+
+程序要回答：
+
+> 这张图片最像 11 类食物中的哪一类？
+
+整体流程可以先看成：
 
 ```text
-一张披萨图片
-      ↓
-   神经网络
-      ↓
-预测它属于 Bread 类
+食物图片
+   ↓
+读取并统一大小
+   ↓
+转换成 Tensor
+   ↓
+送入卷积神经网络
+   ↓
+得到 11 个类别分数
+   ↓
+选择分数最高的类别
 ```
 
-Food-11 一共有 11 个类别：
+例如，模型可能认为一张图片属于：
 
-| 标签 | 英文名称 | 中文理解 |
-|---|---|---|
-| 0 | Bread | 面包、披萨等面食 |
-| 1 | Dairy product | 乳制品 |
-| 2 | Dessert | 甜点 |
-| 3 | Egg | 鸡蛋 |
-| 4 | Fried food | 油炸食品 |
-| 5 | Meat | 肉类 |
-| 6 | Noodles/Pasta | 面条或意大利面 |
-| 7 | Rice | 米饭 |
-| 8 | Seafood | 海鲜 |
-| 9 | Soup | 汤 |
-| 10 | Vegetable/Fruit | 蔬菜或水果 |
+```text
+0 面包：          0.05
+1 乳制品：        0.03
+2 甜点：          0.08
+3 鸡蛋：          0.02
+4 油炸食品：      0.07
+5 肉类：          0.12
+6 面条/意大利面： 0.04
+7 米饭：          0.06
+8 海鲜：          0.45
+9 汤：            0.05
+10 蔬菜/水果：    0.13
+```
 
-模型的工作，就是给每张图片输出一个最可能的类别编号。
-
-所以这是一个：
-
-> 11 分类问题。
-
-“11 分类”不是指一次输入 11 张图片，而是指答案有 11 种可能。
+其中海鲜的概率最高，所以最终预测类别是 8。
 
 ---
 
-# 2. 它和前两个项目是什么关系？
+# 2. 它和前两个项目有什么联系？
 
-三个项目并不是互相独立的。
-
-它们组成了一条连续的学习路线：
+三个项目是一条连续的学习路线：
 
 ```text
 01 手写线性回归
-数据 → 预测 → loss → backward → 手动 SGD
-                  ↓
+    ↓
+认识 Tensor、loss、backward、梯度和 SGD
+    ↓
 02 COVID 神经网络回归
-Dataset → DataLoader → nn.Module → optimizer → train/val
-                  ↓
+    ↓
+认识 Dataset、DataLoader、nn.Module、optimizer、train/eval
+    ↓
 03 Food-11 图像分类
-图片 → transforms → CNN → 交叉熵 → accuracy
+    ↓
+认识图片 Tensor、数据增强、CNN、交叉熵和准确率
 ```
 
-第一份代码让你知道“训练到底发生了什么”。
+第三个项目虽然看起来代码更多，但训练核心没有变化。
 
-第二份代码让你知道“一个完整 PyTorch 项目怎么组织”。
+仍然是：
 
-第三份代码没有推翻前两份代码。它仍然遵循同一个训练骨架：
+```python
+pred = model(x)
+bat_loss = loss(pred, target)
+bat_loss.backward()
+optimizer.step()
+optimizer.zero_grad()
+```
+
+和第一份代码对比：
 
 ```text
-取一批数据
-   ↓
-模型进行预测
-   ↓
+第一份：自己写模型公式，自己写 SGD 更新
+第二份：使用 nn.Module 和 torch.optim
+第三份：换成 CNN，loss 换成交叉熵
+```
+
+因此不要被“图片”“卷积”“ResNet”吓到。
+
+数据类型变了，但训练主线还是原来的主线。
+
+---
+
+# 3. 回归与分类有什么区别？
+
+## 回归
+
+回归输出连续数字：
+
+```text
+房价：123.5 万
+温度：26.8 ℃
+COVID 指标：18.73
+```
+
+COVID 项目最后一层是：
+
+```python
+nn.Linear(128, 1)
+```
+
+因为只需要输出一个预测数字。
+
+## 分类
+
+分类输出有限的类别：
+
+```text
+猫 / 狗
+正常 / 异常
+Food-11 的 11 类食物
+```
+
+本项目最后一层需要输出 11 个分数：
+
+```python
+self.fc2 = nn.Linear(1000, num_class)
+```
+
+当 `num_class=11` 时，输出 shape 是：
+
+```text
+[batch_size, 11]
+```
+
+## 代码对比
+
+| 项目 | 模型输出 | 标签 | 损失函数 | 常用指标 |
+|---|---|---|---|---|
+| COVID 回归 | 1 个连续数值 | float | MSE | MSE/MAE |
+| Food-11 分类 | 11 个类别分数 | long | CrossEntropyLoss | accuracy |
+
+---
+
+# 4. Food-11 的 11 个类别
+
+代码用整数表示类别：
+
+| 文件夹 | 标签 | 类别 |
+|---|---:|---|
+| `00` | 0 | Bread，面包 |
+| `01` | 1 | Dairy product，乳制品 |
+| `02` | 2 | Dessert，甜点 |
+| `03` | 3 | Egg，鸡蛋 |
+| `04` | 4 | Fried food，油炸食品 |
+| `05` | 5 | Meat，肉类 |
+| `06` | 6 | Noodles/Pasta，面条/意大利面 |
+| `07` | 7 | Rice，米饭 |
+| `08` | 8 | Seafood，海鲜 |
+| `09` | 9 | Soup，汤 |
+| `10` | 10 | Vegetable/Fruit，蔬菜/水果 |
+
+为什么不用中文或英文字符串当标签？
+
+因为神经网络和损失函数使用数字计算。
+
+训练结束后，再把预测数字映射回类别名称即可。
+
+你当前的 `food-11_sample` 中还有一个 `11` 文件夹。
+
+但代码是：
+
+```python
+for i in tqdm(range(11)):
+```
+
+`range(11)` 只会产生 0 到 10，所以 `11` 文件夹不会被读取。
+
+这次没有强行修改你的数据，而是在数据说明中明确记录了这件事。
+
+---
+
+# 5. 训练集、验证集、测试集和无标签集
+
+完整数据的目录大致是：
+
+```text
+food-11/
+├── training/
+│   ├── labeled/
+│   └── unlabeled/
+├── validation/
+└── testing/
+```
+
+## training/labeled
+
+这里的图片有正确答案。
+
+用途：
+
+```text
+计算预测
 计算 loss
-   ↓
 反向传播
-   ↓
-优化器更新参数
+更新模型参数
 ```
 
-真正新增的知识主要有四块：
+## validation
 
-1. 图片数据怎么读取和变换；
-2. CNN 如何提取图片特征；
-3. 分类任务如何使用交叉熵；
-4. 如何使用准确率评价模型。
+这里也有正确答案，但不用于更新参数。
+
+用途：
+
+```text
+检查模型在没有参加训练的数据上表现如何
+```
+
+## testing
+
+测试集通常没有公开答案。
+
+用途：
+
+```text
+训练完成以后生成最终预测
+```
+
+当前代码主要完成训练和验证，还没有单独编写测试集提交文件部分。
+
+## training/unlabeled
+
+这里的图片没有人工标签。
+
+普通有监督训练不能直接使用它们。
+
+项目后半部分使用伪标签，让模型尝试利用这些图片。
 
 ---
 
-# 3. 回归和分类到底有什么区别？
-
-COVID 项目的输出是一个连续数字：
+# 6. 项目中各文件负责什么？
 
 ```text
-预测值 = 18.73
-```
-
-这种任务叫回归。
-
-图片分类输出的是类别：
-
-```text
-预测类别 = 8，也就是 Seafood
-```
-
-这种任务叫分类。
-
-二者在代码上的主要差别是：
-
-| 内容 | COVID 回归 | Food-11 分类 |
-|---|---|---|
-| 模型输出 | 1 个数字 | 11 个分数 |
-| 标签类型 | 浮点数 | 整数类别编号 |
-| 损失函数 | MSE | CrossEntropyLoss |
-| 常用评价指标 | MSE、MAE | Accuracy |
-| 最终答案 | 连续数值 | 0–10 中的一个类别 |
-
-注意：模型不会直接输出单词 `Soup`。
-
-模型先输出 11 个分数，再选择分数最大的位置作为类别。
-
----
-
-# 4. Food-11 数据集是什么？
-
-Food-11 是一个食物图片分类数据集，共有 11 类食物。
-
-你电脑中的完整版本采用下面的划分：
-
-```text
-training/labeled       有标签训练图片
-training/unlabeled     无标签训练图片
-validation             有标签验证图片
-testing                无标签测试图片
-```
-
-本地完整数据共有：
-
-```text
-training     9866 张
-validation    660 张
-testing      3071 张
-```
-
-其中 training 又包括：
-
-```text
-有标签图片 3080 张
-无标签图片 6786 张
-```
-
-为什么有些图片没有标签？
-
-因为课程后面想让你练习半监督学习：先用有标签图片训练模型，再用模型给无标签图片猜一个标签。
-
-第一次学习时完全可以不使用无标签图片。
-
----
-
-# 5. 先认识项目目录
-
-整理后的项目结构如下：
-
-```text
-03_food_classification/
-├── simple_class.py
-├── main.py
-├── requirements.txt
-├── 从零看懂PyTorch_Food11图像分类.md
-├── model_utils/
-│   ├── __init__.py
-│   ├── data.py
-│   ├── model.py
-│   └── train.py
-├── data/
-│   ├── README.md
-│   └── food-11/             本地放置，不上传 GitHub
-├── checkpoints/
-│   └── README.md
-└── assets/
-    └── accuracy_curve_original.png
-```
-
-建议阅读顺序：
-
-```text
-本文
- ↓
 simple_class.py
- ↓
-model_utils/data.py
- ↓
-model_utils/model.py
- ↓
-model_utils/train.py
- ↓
+```
+
+所有主要内容放在同一个文件中，适合第一次从上往下阅读。
+
+```text
 main.py
 ```
 
-`simple_class.py` 把所有核心代码放在一个文件里。
+模块化版本的入口，负责设置模型名、batch size、学习率、epoch 等参数。
 
-模块化版本只是把同样的职责拆到不同文件，不代表训练原理变了。
+```text
+model_utils/data.py
+```
+
+负责：
+
+- 图像变换；
+- `foodDataset`；
+- `noLabDataset`；
+- DataLoader；
+- 伪标签数据集；
+- 图片展示。
+
+```text
+model_utils/model.py
+```
+
+负责：
+
+- 自定义 `MyModel`；
+- ResNet18、ResNet50、VGG 等 torchvision 模型；
+- 修改最后的分类层。
+
+```text
+model_utils/train.py
+```
+
+负责：
+
+- 训练；
+- 验证；
+- 计算 loss 和准确率；
+- 保存最佳模型；
+- 启用半监督数据；
+- 绘制曲线。
+
+这和 COVID 项目的一个文件相比，只是把不同职责拆开了。
 
 ---
 
-# 6. 图片在计算机里到底是什么？
+# 7. 图片在计算机里是什么？
 
-人看到一张图片，会说：
+人看到的是一张食物照片。
 
-> 这是一碗汤。
+计算机看到的是很多像素数字。
 
-计算机看到的不是“汤”，而是一大堆数字。
-
-一张彩色图片可以理解成三个数字表：
+彩色图片通常有三个通道：
 
 ```text
-红色通道 R
-绿色通道 G
-蓝色通道 B
+R：Red，红色
+G：Green，绿色
+B：Blue，蓝色
 ```
 
-每个像素都由三个数字描述。
+一个像素可以写成：
+
+```text
+[R, G, B]
+```
 
 例如：
 
 ```text
-[255, 0, 0]     很红
-[0, 255, 0]     很绿
-[0, 0, 255]     很蓝
-[255, 255, 255] 白色
-[0, 0, 0]       黑色
+[255, 0, 0]       红色
+[0, 255, 0]       绿色
+[0, 0, 255]       蓝色
+[255, 255, 255]   白色
+[0, 0, 0]         黑色
 ```
 
-所以图片可以被保存为多维数组，也可以转换为 PyTorch Tensor。
+所以一张图片本质上可以转换成一个多维数组。
 
-模型并不知道“披萨”“米饭”这些人类概念。
-
-模型只能通过大量数字之间的规律，逐渐学习哪些纹理、颜色和形状更可能对应某个类别。
+神经网络不直接理解“面包”，它通过图片数字学习不同类别的特征规律。
 
 ---
 
-# 7. 高、宽、通道与 shape
+# 8. 图片 shape：H、W、C
 
-假设图片大小为 224×224，并且是 RGB 彩色图片。
+代码设置：
 
-在 PIL 或 NumPy 的常见表示中，shape 通常是：
+```python
+HW = 224
+```
+
+每张图片被 resize 成 224×224。
+
+放在 NumPy 中时，shape 是：
 
 ```text
 [224, 224, 3]
 ```
 
-三个数字分别代表：
+也就是：
 
 ```text
-224：高度 Height
-224：宽度 Width
-3：颜色通道 Channel
+Height × Width × Channel
 ```
 
-常缩写成：
-
-```text
-H × W × C
-```
-
-如果一次有 32 张图片，还需要在最前面增加 batch 维度。
-
----
-
-# 8. 为什么 PyTorch 的图片 shape 是 `[C, H, W]`？
-
-经过 `transforms.ToTensor()` 后，单张图片通常变成：
+经过 `ToTensor()` 后，PyTorch 会把顺序变成：
 
 ```text
 [3, 224, 224]
@@ -336,458 +412,412 @@ H × W × C
 也就是：
 
 ```text
-C × H × W
+Channel × Height × Width
 ```
 
-DataLoader 把 32 张图片组成一个 batch 后，shape 变成：
+组成 batch 后：
 
 ```text
-[32, 3, 224, 224]
+[16, 3, 224, 224]
 ```
 
-四个维度分别是：
-
-```text
-32  = batch size
-3   = RGB 通道
-224 = 图片高度
-224 = 图片宽度
-```
-
-PyTorch 的 `Conv2d` 默认就期待这种顺序：
-
-```text
-[N, C, H, W]
-```
-
-其中 N 表示一个 batch 中的图片数量。
+第一个 16 是 batch size。
 
 ---
 
-# 9. 为什么所有图片要变成统一大小？
+# 9. 为什么要把图片变成 224×224？
 
-原始图片的大小不一定相同：
-
-```text
-图片 A：640×480
-图片 B：300×300
-图片 C：1024×768
-```
-
-DataLoader 想把多张图片堆成一个 Tensor，就要求它们的 shape 一致。
-
-否则无法得到：
+原始图片可能大小不同：
 
 ```text
-[batch_size, 3, height, width]
+640×480
+300×300
+1024×768
 ```
 
-所以代码把图片统一处理成 224×224。
+如果想把多张图片放进同一个 batch，它们必须拥有相同 shape。
 
-224 也是许多经典图片模型常用的输入大小，例如 ResNet18。
-
----
-
-# 10. 第一次理解图像变换 transforms
-
-单文件版训练变换是：
+所以代码使用：
 
 ```python
-train_transform = transforms.Compose(
-    [
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225),
-        ),
-    ]
-)
+img = img.resize((HW, HW))
 ```
 
-`Compose` 的意思是：
-
-> 按照列表顺序，把一系列处理步骤连起来。
-
-一张图片会依次经过：
-
-```text
-随机裁剪
-  ↓
-随机水平翻转
-  ↓
-转换成 Tensor
-  ↓
-标准化
-```
-
-这条流水线就叫 transform。
-
----
-
-# 11. `RandomResizedCrop` 是什么？
-
-代码：
+或者在 transform 中使用：
 
 ```python
 transforms.RandomResizedCrop(224)
 ```
 
-它会从原图中随机选择一块区域，再缩放到 224×224。
-
-同一张图片在不同 epoch 中，可能得到略微不同的裁剪结果。
-
-这样做不是在制造错误，而是在告诉模型：
-
-> 食物稍微大一点、小一点、靠左一点、靠右一点，类别仍然不变。
-
-这种技术叫数据增强。
-
-它可以增加训练数据的变化，降低模型死记训练图片的可能。
+224 也是 VGG、ResNet 等经典模型常见的输入尺寸。
 
 ---
 
-# 12. `RandomHorizontalFlip` 是什么？
+# 10. transform 是什么？
 
 代码：
 
 ```python
-transforms.RandomHorizontalFlip()
+train_transform = transforms.Compose([...])
 ```
 
-它会以一定概率把图片左右翻转。
+`Compose` 的意思是把多个处理步骤按顺序连接起来。
 
 例如：
 
 ```text
-原图：盘子在左边
-翻转：盘子在右边
+原始图片
+  ↓
+随机裁剪
+  ↓
+随机旋转
+  ↓
+转换成 Tensor
 ```
 
-翻转以后，它仍然是同一种食物。
+每次执行：
 
-因此可以用来增加训练样本的变化。
+```python
+self.transform(self.X[item])
+```
 
-验证集不能随机翻转，因为我们希望每次验证都使用稳定、可重复的数据。
+就会把当前图片依次交给这些步骤处理。
 
 ---
 
-# 13. `AutoAugment` 是什么？
+# 11. 训练集的数据增强
 
-模块化版本还使用：
+`simple_class.py` 中：
 
 ```python
-autoaugment.AutoAugment(
-    policy=autoaugment.AutoAugmentPolicy.IMAGENET
+train_transform = transforms.Compose(
+    [
+        transforms.ToPILImage(),
+        transforms.RandomResizedCrop(224),
+        transforms.RandomRotation(50),
+        transforms.ToTensor()
+    ]
 )
 ```
 
-它会从一组已经设计好的增强策略中选择操作，例如改变颜色、对比度或进行轻微旋转。
+## ToPILImage
 
-第一次阅读时，只需要记住：
+`self.X` 中保存的是 NumPy 图片。
 
-> AutoAugment 是更丰富的训练图片增强组合。
+许多 torchvision 随机变换更适合接收 PIL 图片，因此先转换：
 
-如果你想确认基础流程，可以先读不含 AutoAugment 的 `simple_class.py`。
+```python
+transforms.ToPILImage()
+```
+
+## RandomResizedCrop
+
+随机裁剪图片的一部分，再缩放到 224×224。
+
+它让模型看到同一张图片的不同区域和比例。
+
+## RandomRotation
+
+```python
+transforms.RandomRotation(50)
+```
+
+在一定角度范围内随机旋转图片。
+
+## ToTensor
+
+把图片变成 PyTorch Tensor，并把像素从常见的 0–255 缩放到 0–1。
+
+数据增强的目的不是把图片变漂亮，而是减少模型死记训练图片。
 
 ---
 
-# 14. `ToTensor` 做了什么？
+# 12. 验证集为什么不做随机增强？
+
+验证变换是：
+
+```python
+val_transform = transforms.Compose(
+    [
+        transforms.ToPILImage(),
+        transforms.ToTensor()
+    ]
+)
+```
+
+验证的目标是稳定衡量模型。
+
+如果每次验证都随机旋转、裁剪，那么同一个模型每次面对的图片都不完全相同，结果会更难比较。
+
+因此：
+
+```text
+训练集：可以随机增强
+验证集：保持稳定
+```
+
+DataLoader 也做了类似区分：
+
+```text
+训练集 shuffle=True
+验证集 shuffle=False
+```
+
+---
+
+# 13. `food_Dataset` 是什么？
+
+类定义：
+
+```python
+class food_Dataset(Dataset):
+```
+
+它继承 PyTorch 的 Dataset。
+
+与 COVID 项目一样，需要完成三个核心部分：
+
+```text
+__init__      初始化数据
+__getitem__   根据下标返回一个样本
+__len__       返回数据数量
+```
+
+这里的“一个样本”是：
+
+```text
+一张图片 + 一个类别标签
+```
+
+无标签模式下则是：
+
+```text
+变换后的图片 + 原始图片
+```
+
+---
+
+# 14. `__init__()` 如何准备数据？
+
+代码先保存模式：
+
+```python
+self.mode = mode
+```
+
+如果是半监督无标签模式：
+
+```python
+if mode == "semi":
+    self.X = self.read_file(path)
+```
+
+只得到图片，没有 Y。
+
+其他模式：
+
+```python
+else:
+    self.X, self.Y = self.read_file(path)
+    self.Y = torch.LongTensor(self.Y)
+```
+
+得到图片 X 和标签 Y。
+
+接着选择 transform：
+
+```python
+if mode == "train":
+    self.transform = train_transform
+else:
+    self.transform = val_transform
+```
+
+所以训练模式使用随机增强，验证和半监督读取使用较稳定的变换。
+
+---
+
+# 15. `read_file()` 如何读取有标签图片？
+
+核心循环：
+
+```python
+for i in tqdm(range(11)):
+```
+
+依次处理 11 个类别。
+
+拼出类别目录：
+
+```python
+file_dir = path + "/%02d" % i
+```
+
+当 i=0：
+
+```text
+path/00
+```
+
+当 i=8：
+
+```text
+path/08
+```
+
+列出图片文件：
+
+```python
+file_list = os.listdir(file_dir)
+```
+
+准备放图片和标签的数组：
+
+```python
+xi = np.zeros((len(file_list), HW, HW, 3), dtype=np.uint8)
+yi = np.zeros(len(file_list), dtype=np.uint8)
+```
+
+`xi` 的 shape：
+
+```text
+[当前类别图片数量, 224, 224, 3]
+```
+
+`yi` 保存当前类别所有图片的标签。
+
+---
+
+# 16. 如何从文件夹得到类别标签？
+
+循环中的 i 就是当前类别。
+
+```python
+yi[j] = i
+```
+
+例如正在读取目录 `05`：
+
+```text
+i = 5
+```
+
+目录中每张图片的标签都会设置成 5，也就是 Meat。
+
+读完一个类别后，把它与之前类别合并：
+
+```python
+X = np.concatenate((X, xi), axis=0)
+Y = np.concatenate((Y, yi), axis=0)
+```
+
+最终得到：
+
+```text
+X：全部图片
+Y：每张图片对应的标签
+```
+
+这种写法直观，适合看懂数据结构。
+
+需要注意，它会把所有 resize 后的图片放进内存。运行完整数据时会占用较多内存，所以第一次建议使用 sample。
+
+---
+
+# 17. 如何读取无标签图片？
+
+半监督模式中没有类别子目录循环。
+
+代码直接列出文件：
+
+```python
+file_list = os.listdir(path)
+```
+
+然后逐张读取：
+
+```python
+img = Image.open(img_path)
+img = img.resize((HW, HW))
+xi[j, ...] = img
+```
+
+最终只返回：
+
+```python
+return xi
+```
+
+因为它没有人工标签，所以没有 Y。
+
+---
+
+# 18. `__getitem__()` 返回什么？
+
+有标签模式：
+
+```python
+return self.transform(self.X[item]), self.Y[item]
+```
+
+返回：
+
+```text
+变换后的图片 Tensor
+类别标签
+```
+
+半监督模式：
+
+```python
+return self.transform(self.X[item]), self.X[item]
+```
+
+返回：
+
+```text
+变换后的图片 Tensor
+原始 NumPy 图片
+```
+
+为什么还要返回原始图片？
+
+因为模型筛选出高置信度图片后，要把原图保存进新的伪标签数据集，再对它执行训练 transform。
+
+---
+
+# 19. 标签为什么必须是 LongTensor？
 
 代码：
 
 ```python
-transforms.ToTensor()
+self.Y = torch.LongTensor(self.Y)
 ```
 
-它主要完成两件事。
-
-第一，把 PIL 图片转换成 PyTorch Tensor。
-
-第二，把常见的像素范围：
-
-```text
-0 到 255
-```
-
-缩放到：
-
-```text
-0.0 到 1.0
-```
-
-shape 也会从常见的：
-
-```text
-[H, W, C]
-```
-
-变成 PyTorch 使用的：
-
-```text
-[C, H, W]
-```
-
----
-
-# 15. `Normalize` 为什么需要均值和标准差？
-
-代码使用：
-
-```python
-transforms.Normalize(
-    mean=(0.485, 0.456, 0.406),
-    std=(0.229, 0.224, 0.225),
-)
-```
-
-这三个 mean 分别对应 R、G、B 三个通道的均值。
-
-三个 std 分别对应三个通道的标准差。
-
-每个通道都会进行近似下面的计算：
-
-```text
-标准化后的值 = (原值 - mean) / std
-```
-
-这和 COVID 项目中的标准化思想是一样的。
-
-区别只是：
-
-- COVID 项目标准化 93 个表格特征；
-- 图片项目标准化 RGB 三个通道。
-
-代码使用的是 ImageNet 常用的均值和标准差，因此也适合后面使用 ImageNet 预训练模型。
-
----
-
-# 16. 训练集和验证集为什么使用不同变换？
-
-训练集：
-
-```text
-允许随机裁剪、翻转、颜色变化
-```
-
-验证集：
-
-```text
-只统一尺寸、转 Tensor、标准化
-```
-
-原因是：
-
-训练阶段需要给模型制造变化，提高泛化能力。
-
-验证阶段需要稳定地衡量模型，不能让每次验证使用随机变化后的不同图片。
-
-因此模块化代码中：
-
-```python
-self.transform = (
-    train_transform
-    if mode in {"train", "train_unl"}
-    else eval_transform
-)
-```
-
----
-
-# 17. `FoodDataset` 的职责
-
-在 COVID 项目里，`CovidDataset` 负责读取 CSV。
-
-在这里，`FoodDataset` 负责：
-
-1. 找到训练集或验证集目录；
-2. 找出各类别中的图片路径；
-3. 根据目录名记录标签；
-4. 需要某个样本时读取图片；
-5. 对图片执行 transform；
-6. 返回图片 Tensor 和标签。
-
-它仍然继承：
-
-```python
-class FoodDataset(Dataset):
-```
-
-因此仍然需要实现：
-
-```python
-__getitem__
-__len__
-```
-
-这正是第二个项目学过的知识。
-
----
-
-# 18. 为什么只保存图片路径，而不把所有图片一次读进内存？
-
-博主原代码先建立一个很大的 NumPy 数组：
-
-```python
-np.zeros((图片数量, 224, 224, 3), dtype=np.uint8)
-```
-
-然后把所有图片一次性读入内存。
-
-完整数据有上万张图片，这种做法可能占用数 GB 内存。
-
-修复后的代码在初始化 Dataset 时只保存：
-
-```text
-图片路径列表
-标签列表
-```
-
-真正访问某个下标时，才读取对应图片：
-
-```python
-with Image.open(self.image_paths[index]) as image:
-    image = image.convert("RGB")
-    image_tensor = self.transform(image)
-```
-
-这种方式叫按需读取或懒加载。
-
-优点是：
-
-- 内存占用小很多；
-- 可以训练完整数据集；
-- Dataset 的职责更清楚。
-
-代价是训练过程中会不断从磁盘读取图片。
-
-这是正常的数据加载方式。
-
----
-
-# 19. 如何从目录名得到类别标签？
-
-Food-11 的有标签目录是：
-
-```text
-00/
-01/
-02/
-...
-10/
-```
-
-代码使用：
-
-```python
-for label in range(len(CLASS_NAMES)):
-    class_dir = self.split_dir / f"{label:02d}"
-```
-
-`len(CLASS_NAMES)` 是 11，所以 label 会依次取：
+分类标签不是普通连续小数，而是正确类别的位置：
 
 ```text
 0, 1, 2, ..., 10
 ```
 
-`f"{label:02d}"` 表示把整数显示成至少两位：
+`CrossEntropyLoss` 要求 target 是整数类别编号，一般使用 `torch.long`。
 
-```text
-0  → 00
-1  → 01
-9  → 09
-10 → 10
-```
-
-目录 `08` 中的图片就会得到标签 8。
-
----
-
-# 20. `__getitem__()` 如何读取一张图片？
-
-核心代码：
-
-```python
-def __getitem__(self, index):
-    with Image.open(self.image_paths[index]) as image:
-        image = image.convert("RGB")
-        image_tensor = self.transform(image)
-
-    label = torch.tensor(self.labels[index], dtype=torch.long)
-    return image_tensor, label
-```
-
-一步一步看：
-
-```python
-self.image_paths[index]
-```
-
-取得第 index 张图片的路径。
-
-```python
-Image.open(...)
-```
-
-读取图片。
-
-```python
-image.convert("RGB")
-```
-
-保证图片拥有三个颜色通道。
-
-如果某些图片是灰度图或带透明通道，这一步可以避免通道数不一致。
-
-```python
-self.transform(image)
-```
-
-执行裁剪、Tensor 转换和标准化。
-
-最后返回：
-
-```text
-(图片张量, 类别标签)
-```
-
----
-
-# 21. 标签为什么必须是 `LongTensor`？
-
-分类标签是类别编号：
-
-```text
-0, 1, 2, ..., 10
-```
-
-`CrossEntropyLoss` 需要标签表示“正确类别的位置”，所以标签必须是整数类型。
-
-代码写成：
-
-```python
-torch.tensor(label, dtype=torch.long)
-```
-
-`torch.long` 通常就是 64 位整数。
-
-如果错误地把标签变成 float，经常会看到类似错误：
+如果标签是 float，可能报错：
 
 ```text
 expected scalar type Long but found Float
 ```
 
-与 COVID 回归对比：
+与回归项目对比：
 
 ```text
-回归标签：float，例如 18.73
-分类标签：long，例如 8
+回归 target：float
+分类 target：long
 ```
 
 ---
 
-# 22. DataLoader 如何组成一个 batch？
+# 20. DataLoader 如何组成 batch？
 
 代码：
 
@@ -795,1312 +825,1117 @@ expected scalar type Long but found Float
 train_loader = DataLoader(
     train_set,
     batch_size=16,
-    shuffle=True,
+    shuffle=True
 )
 ```
 
-假设每张图片的 shape 是：
-
-```text
-[3, 224, 224]
-```
-
-16 张图片组成 batch 后：
-
-```text
-images.shape = [16, 3, 224, 224]
-labels.shape = [16]
-```
-
-labels 可能类似：
-
-```text
-[2, 8, 1, 5, 5, 9, ...]
-```
-
-训练集使用：
+每次循环：
 
 ```python
-shuffle=True
+for batch_x, batch_y in train_loader:
 ```
 
-每个 epoch 都打乱顺序。
+会取得一批图片和标签。
 
-验证集使用：
+常见 shape：
 
-```python
-shuffle=False
+```text
+batch_x：[16, 3, 224, 224]
+batch_y：[16]
 ```
 
-保持稳定顺序。
+`batch_y` 中的 16 个数字分别是 16 张图片的正确类别。
+
+DataLoader 仍然负责：
+
+- 分批；
+- 打乱训练顺序；
+- 调用 Dataset 的 `__getitem__()`；
+- 把多个样本组合成 batch。
 
 ---
 
-# 23. CNN 为什么适合图片？
+# 21. `myModel` 的整体结构
 
-COVID 项目使用全连接层：
+自定义模型：
 
 ```python
-nn.Linear(93, 128)
+class myModel(nn.Module):
 ```
 
-因为每条数据只是 93 个普通特征。
-
-图片有空间结构：
-
-- 相邻像素往往属于同一个物体；
-- 边缘由附近像素的变化形成；
-- 小纹理可以组合成更复杂的形状。
-
-CNN 使用一个小窗口在图片上移动，寻找局部规律。
-
-前面的卷积层可能逐渐学到：
+它大致分成：
 
 ```text
-边缘、颜色变化、简单纹理
+第一组：Conv + BatchNorm + ReLU + Pool
+第二组：Conv + BatchNorm + ReLU + Pool
+第三组：Conv + BatchNorm + ReLU + Pool
+第四组：Conv + BatchNorm + ReLU + Pool
+再次池化
+展平
+全连接层
+ReLU
+11 分类层
 ```
 
-后面的卷积层可能逐渐组合成：
+前半部分负责从图片中提取特征。
 
-```text
-盘子形状、面条纹理、肉块轮廓、汤的表面
-```
-
-所以 CNN 很适合处理图片。
+后半部分负责根据特征判断类别。
 
 ---
 
-# 24. `Conv2d` 的五个重要参数
+# 22. 什么是卷积层？
+
+卷积可以先理解成一个小窗口在图片上移动。
+
+这个小窗口会寻找局部规律，例如：
+
+- 横向边缘；
+- 纵向边缘；
+- 颜色变化；
+- 简单纹理。
+
+第一层学到简单特征后，后面的层会把简单特征组合起来。
+
+可能逐渐形成：
+
+```text
+边缘 → 小纹理 → 局部形状 → 更复杂的食物特征
+```
+
+卷积适合图片，是因为图片中相邻像素之间通常有关联。
+
+---
+
+# 23. `Conv2d(3, 64, 3, 1, 1)` 逐项解释
 
 代码：
 
 ```python
-nn.Conv2d(
-    in_channels=3,
-    out_channels=64,
-    kernel_size=3,
-    padding=1,
-)
+self.conv1 = nn.Conv2d(3, 64, 3, 1, 1)
 ```
 
-重要参数如下。
-
-## `in_channels`
-
-输入有多少个通道。
-
-RGB 图片有 3 个通道，所以第一层是：
-
-```python
-in_channels=3
-```
-
-## `out_channels`
-
-这一层想得到多少张新的特征图。
-
-```python
-out_channels=64
-```
-
-表示得到 64 个输出通道。
-
-## `kernel_size`
-
-卷积窗口大小。
-
-```python
-kernel_size=3
-```
-
-表示使用 3×3 的窗口。
-
-## `stride`
-
-卷积窗口每次移动多少格。
-
-代码没有写时，默认是 1。
-
-## `padding`
-
-在图片边缘补多少圈。
-
-3×3 卷积配合 `padding=1`、`stride=1` 时，通常可以保持高宽不变。
-
----
-
-# 25. 输入通道和输出通道是什么？
-
-第一层卷积：
+完整参数含义：
 
 ```text
-输入：[batch, 3, 224, 224]
-输出：[batch, 64, 224, 224]
+in_channels  = 3
+out_channels = 64
+kernel_size  = 3
+stride       = 1
+padding      = 1
 ```
 
-这里的 64 不是颜色通道。
+## 输入通道 3
 
-它是神经网络学习出来的 64 种特征表示。
+因为输入是 RGB 图片。
 
-下一层写成：
+## 输出通道 64
 
-```python
-nn.Conv2d(64, 128, kernel_size=3, padding=1)
-```
+这一层要学习 64 组卷积核，产生 64 张特征图。
 
-原因是上一层输出 64 个通道，所以这一层必须接收 64 个通道。
+## 卷积核 3
 
-通道的连接关系必须对上：
+表示窗口是 3×3。
+
+## stride 1
+
+窗口每次移动 1 格。
+
+## padding 1
+
+在图片四周补一圈，使 3×3 卷积后的高宽保持不变。
+
+所以：
 
 ```text
-3 → 64 → 128 → 256 → 512
+[batch, 3, 224, 224]
+        ↓ Conv2d
+[batch, 64, 224, 224]
 ```
 
 ---
 
-# 26. BatchNorm、ReLU 和 MaxPool
-
-一个常见卷积阶段是：
-
-```text
-Conv2d
-  ↓
-BatchNorm2d
-  ↓
-ReLU
-  ↓
-MaxPool2d
-```
+# 24. BatchNorm、ReLU 与 MaxPool
 
 ## BatchNorm2d
 
 ```python
-nn.BatchNorm2d(64)
+self.bn1 = nn.BatchNorm2d(64)
 ```
 
-它对一个 batch 中的特征进行规范化处理，并且有可以学习的缩放和平移参数。
+它对卷积得到的特征进行规范化，并拥有可学习参数。
 
 入门阶段先记住：
 
-> BatchNorm 通常可以让训练过程更稳定。
+> BatchNorm 常用来让训练更稳定。
 
 ## ReLU
 
 ```python
-nn.ReLU(inplace=True)
+self.relu = nn.ReLU()
 ```
 
 它大致执行：
 
 ```text
-小于 0 → 0
-大于 0 → 保留
+负数 → 0
+正数 → 保留
 ```
 
-ReLU 给网络加入非线性能力。
-
-如果没有非线性激活，多层线性运算组合以后仍然只是线性变换。
+它给网络加入非线性能力。
 
 ## MaxPool2d
 
 ```python
-nn.MaxPool2d(2)
+self.pool1 = nn.MaxPool2d(2)
 ```
 
-它通常让高和宽都缩小一半：
+通常会把高宽减半：
 
 ```text
 224×224 → 112×112
-112×112 → 56×56
 ```
 
-这样可以减少后续计算量，同时保留局部区域中比较明显的响应。
+通道数不会因为这个池化改变。
 
 ---
 
-# 27. `AdaptiveAvgPool2d` 解决了什么问题？
+# 25. 图片经过模型时 shape 如何变化？
 
-博主原模型写了：
+假设 batch size 是 16：
 
-```python
-self.fc = nn.Linear(25088, 512)
-```
+| 操作 | shape |
+|---|---|
+| 输入 | `[16, 3, 224, 224]` |
+| conv1 | `[16, 64, 224, 224]` |
+| pool1 | `[16, 64, 112, 112]` |
+| layer1 | `[16, 128, 56, 56]` |
+| layer2 | `[16, 256, 28, 28]` |
+| layer3 | `[16, 512, 14, 14]` |
+| pool2 | `[16, 512, 7, 7]` |
+| 展平 | `[16, 25088]` |
+| fc1 | `[16, 1000]` |
+| fc2 | `[16, 11]` |
 
-这个 25088 来自：
-
-```text
-512 × 7 × 7
-```
-
-它与输入图片大小和池化次数紧密绑定。
-
-只要前面尺寸稍微改变，最后就可能出现矩阵乘法 shape 不匹配。
-
-修复后的模型使用：
-
-```python
-nn.AdaptiveAvgPool2d((1, 1))
-```
-
-它会把每个通道的空间大小统一变成 1×1：
+为什么 25088？
 
 ```text
-[batch, 512, H, W]
+512 × 7 × 7 = 25088
+```
+
+这也是代码写：
+
+```python
+self.fc1 = nn.Linear(25088, 1000)
+```
+
+的原因。
+
+这套计算依赖输入是 224×224。
+
+如果随意改变输入尺寸，最后的 25088 可能对不上。
+
+---
+
+# 26. 为什么要展平？
+
+卷积输出是四维：
+
+```text
+[batch, channel, height, width]
+```
+
+全连接层希望每个样本是一排特征：
+
+```text
+[batch, feature]
+```
+
+所以代码：
+
+```python
+x = x.view(x.size()[0], -1)
+```
+
+第一维保留 batch size。
+
+`-1` 表示剩余维度自动计算。
+
+于是：
+
+```text
+[16, 512, 7, 7]
         ↓
-[batch, 512, 1, 1]
-```
-
-展平后固定是：
-
-```text
-[batch, 512]
-```
-
-分类层因此可以稳定写成：
-
-```python
-nn.Linear(512, 11)
+[16, 25088]
 ```
 
 ---
 
-# 28. 为什么最后还需要全连接层？
+# 27. 为什么最后输出 11 个数字？
 
-卷积部分的任务是提取图片特征。
-
-最后还需要把特征转换为 11 个类别分数：
+代码：
 
 ```python
-self.classifier = nn.Linear(512, num_classes)
+self.fc2 = nn.Linear(1000, num_class)
 ```
+
+如果：
+
+```python
+num_class = 11
+```
+
+那么每张图片输出 11 个数。
+
+它们分别对应类别 0 到类别 10。
+
+模型不会直接输出一个“正确类别整数”，因为训练时需要知道每个类别的相对分数。
+
+---
+
+# 28. logits、Softmax 和概率
+
+模型原始输出叫 logits。
+
+例如：
+
+```text
+[-0.5, 0.8, 2.1, 0.3, ...]
+```
+
+logits：
+
+- 可以是负数；
+- 不要求在 0 到 1 之间；
+- 不要求总和等于 1。
+
+Softmax：
+
+```python
+soft = nn.Softmax(dim=1)
+pred_soft = soft(pred)
+```
+
+会把每张图片的 11 个 logits 转换成概率分布。
+
+`dim=1` 表示沿类别维度计算。
+
+修复前代码没有写 dim。现在明确写成 `dim=1`，避免不同版本产生警告或不明确行为。
+
+再通过：
+
+```python
+pred_max, pred_value = pred_soft.max(1)
+```
+
+得到：
+
+```text
+pred_max    最大概率，也就是置信度
+pred_value  最大概率所在位置，也就是预测类别
+```
+
+---
+
+# 29. CrossEntropyLoss 是什么？
+
+代码：
+
+```python
+loss = nn.CrossEntropyLoss()
+```
+
+它用于多分类问题。
 
 输入：
 
 ```text
-每张图片的 512 个特征
+pred：[batch, 11] 的原始 logits
 ```
 
-输出：
+target：
 
 ```text
-11 个类别分数
+[batch] 的正确类别编号
 ```
 
-这个最后的 Linear 常被称为分类头。
+训练计算 CrossEntropyLoss 时，不要先手动对 pred 使用 Softmax。
 
----
+因为 CrossEntropyLoss 内部已经包含适合训练的相关计算。
 
-# 29. 一张图片经过 SimpleCNN 时 shape 如何变化？
-
-假设 batch size 是 16：
-
-| 阶段 | 输出 shape |
-|---|---|
-| 输入 | `[16, 3, 224, 224]` |
-| 第一次卷积 | `[16, 64, 224, 224]` |
-| 第一次池化 | `[16, 64, 112, 112]` |
-| 第二次卷积 | `[16, 128, 112, 112]` |
-| 第二次池化 | `[16, 128, 56, 56]` |
-| 第三次卷积 | `[16, 256, 56, 56]` |
-| 第三次池化 | `[16, 256, 28, 28]` |
-| 第四次卷积 | `[16, 512, 28, 28]` |
-| 自适应平均池化 | `[16, 512, 1, 1]` |
-| flatten | `[16, 512]` |
-| 分类层 | `[16, 11]` |
-
-所以模型一次为 16 张图片分别输出 11 个分数。
-
----
-
-# 30. 模型输出的 11 个数字是什么？
-
-模型输出可能类似：
+记忆：
 
 ```text
-[-0.8, 1.2, 0.3, -1.0, 2.7, 0.5, 0.1, -0.4, 1.8, 0.2, 0.6]
-```
-
-这些数叫 logits。
-
-它们不是概率：
-
-- 可以是负数；
-- 不要求加起来等于 1；
-- 数值越大，模型越偏向相应类别。
-
-上面最大值是位置 4 的 `2.7`。
-
-因此预测类别是：
-
-```text
-4 → Fried food
-```
-
-代码取最大位置：
-
-```python
-predicted = logits.argmax(dim=1)
+计算训练 loss：直接传 logits
+查看概率或做伪标签：使用 Softmax
 ```
 
 ---
 
-# 31. Softmax 如何把输出变成概率？
+# 30. 训练循环逐行理解
 
-Softmax 会把 11 个 logits 转成 11 个 0 到 1 之间的数，并让它们加起来等于 1。
-
-代码：
+训练开始：
 
 ```python
-probabilities = torch.softmax(logits, dim=1)
+model.train()
 ```
 
-假设结果是：
-
-```text
-[0.01, 0.08, 0.03, 0.01, 0.55, 0.04, 0.02, 0.01, 0.18, 0.02, 0.05]
-```
-
-位置 4 的概率最大，所以预测为类别 4。
-
-半监督学习还会关心最大概率是多少，因为它用这个概率表示置信度。
-
----
-
-# 32. 为什么训练时不用手动调用 Softmax？
-
-训练代码直接写：
+取一批数据：
 
 ```python
-logits = model(images)
-loss = criterion(logits, labels)
+for batch_x, batch_y in train_loader:
 ```
 
-没有先写：
+送到 CPU 或 GPU：
 
 ```python
-torch.softmax(logits, dim=1)
+x = batch_x.to(device)
+target = batch_y.to(device)
 ```
 
-这是因为：
+模型预测：
 
 ```python
-nn.CrossEntropyLoss()
+pred = model(x)
 ```
 
-已经在内部组合了适合分类的对数 Softmax 和负对数似然计算。
-
-把原始 logits 直接交给它，数值上更稳定。
-
-所以记住：
-
-```text
-训练计算 CrossEntropyLoss：直接传 logits
-展示概率或筛选伪标签：再调用 softmax
-```
-
----
-
-# 33. `CrossEntropyLoss` 是什么？
-
-代码：
+计算交叉熵：
 
 ```python
-criterion = nn.CrossEntropyLoss()
+train_bat_loss = loss(pred, target)
 ```
 
-它会比较：
-
-```text
-模型对 11 个类别给出的分数
-```
-
-与：
-
-```text
-真实类别编号
-```
-
-如果真实类别是 8，但模型更偏向类别 2，loss 会比较大。
-
-如果模型给类别 8 很高的分数，loss 会比较小。
-
-训练的目标仍然是：
-
-```text
-不断调整模型参数，让 loss 下降
-```
-
-它和前两个项目的核心思想没有变化，只是损失函数换成了更适合分类的形式。
-
----
-
-# 34. 训练一个 batch 的完整过程
-
-核心代码：
+反向传播：
 
 ```python
-optimizer.zero_grad()
-logits = model(images)
-loss = criterion(logits, labels)
-loss.backward()
-optimizer.step()
+train_bat_loss.backward()
 ```
 
-逐步解释。
-
-## 第一步：清空旧梯度
-
-```python
-optimizer.zero_grad()
-```
-
-PyTorch 默认会累积梯度，所以每个 batch 开始前要清空上一批梯度。
-
-## 第二步：前向传播
-
-```python
-logits = model(images)
-```
-
-图片经过 CNN，得到 11 个类别分数。
-
-## 第三步：计算损失
-
-```python
-loss = criterion(logits, labels)
-```
-
-比较预测分数与真实类别。
-
-## 第四步：反向传播
-
-```python
-loss.backward()
-```
-
-计算每个可训练参数应该如何变化。
-
-## 第五步：更新参数
+更新参数：
 
 ```python
 optimizer.step()
 ```
 
-优化器根据梯度更新参数。
+清空梯度：
 
-这仍然是第一份线性回归中的训练四连：
-
-```text
-预测 → loss → backward → 更新参数
+```python
+optimizer.zero_grad()
 ```
+
+记录 loss：
+
+```python
+train_loss += train_bat_loss.cpu().item()
+```
+
+这和前两个项目的训练流程完全一致。
 
 ---
 
-# 35. 如何计算分类准确率？
+# 31. 分类准确率怎么计算？
 
-先取得模型预测类别：
+原代码：
 
 ```python
-predicted = logits.argmax(dim=1)
+np.argmax(pred.detach().cpu().numpy(), axis=1)
 ```
+
+含义是：
+
+1. `detach()`：从计算图中分离；
+2. `cpu()`：移动到 CPU；
+3. `numpy()`：转成 NumPy；
+4. `argmax(axis=1)`：对每张图片的 11 个分数取最大位置。
 
 再和真实标签比较：
 
 ```python
-predicted == labels
+预测类别 == target.cpu().numpy()
 ```
 
-结果类似：
+相等会得到 True，不相等得到 False。
 
-```text
-[True, False, True, True, False]
-```
+NumPy 求和时，True 当作 1，False 当作 0。
 
-统计正确数量：
+所以：
 
 ```python
-correct += (predicted == labels).sum().item()
+train_acc += np.sum(...)
 ```
 
-最后：
+是在累计预测正确的图片数量。
 
-```text
-accuracy = 正确数量 / 总数量
+最后除以数据总数：
+
+```python
+train_acc / train_loader.dataset.__len__()
 ```
 
-例如 100 张图片预测正确 73 张：
-
-```text
-accuracy = 73 / 100 = 0.73
-```
-
-也就是 73%。
-
-注意 accuracy 和 loss 不是一回事：
-
-- accuracy 只关心最终类别是否正确；
-- loss 还关心模型对正确类别的信心程度。
+得到 0 到 1 之间的准确率。
 
 ---
 
-# 36. `model.train()` 和 `model.eval()`
+# 32. 验证流程逐行理解
 
-训练前：
-
-```python
-model.train()
-```
-
-验证前：
+切换验证模式：
 
 ```python
 model.eval()
 ```
 
-这两个函数不会自动帮你训练或验证。
-
-它们是在告诉模型当前处于什么阶段。
-
-BatchNorm、Dropout 等层在训练和验证阶段的行为不同。
-
-因此正确顺序是：
-
-```text
-model.train()
-执行训练循环
-     ↓
-model.eval()
-执行验证循环
-```
-
----
-
-# 37. 验证阶段为什么使用 `torch.no_grad()`？
-
-验证代码：
+关闭梯度：
 
 ```python
-model.eval()
 with torch.no_grad():
-    for images, labels in val_loader:
-        logits = model(images)
 ```
 
-验证阶段只需要计算结果，不需要反向传播。
+遍历验证集：
 
-关闭梯度记录可以：
+```python
+for batch_x, batch_y in val_loader:
+```
 
-- 减少内存占用；
-- 提高运行速度；
-- 避免意外进行训练操作。
+预测与计算 loss：
 
-但要注意：
+```python
+val_pred_y = model(val_x)
+val_batch_loss = loss(val_pred_y, val_y)
+```
+
+验证阶段没有：
+
+```python
+backward()
+optimizer.step()
+```
+
+因为验证集只用来检查效果，不能偷偷参加模型更新。
+
+`model.eval()` 和 `torch.no_grad()` 不是同一件事：
 
 ```text
-model.eval()       改变部分网络层的工作模式
-torch.no_grad()    关闭梯度记录
+eval()      改变 BatchNorm、Dropout 等层的工作状态
+no_grad()   不记录梯度
 ```
 
-它们负责不同的事情，验证时通常两个都需要。
+验证时通常两个都使用。
 
 ---
 
-# 38. 为什么保存验证集上最好的模型？
+# 33. 为什么保存最佳模型？
 
-训练轮数增加时，训练集准确率往往会继续提高。
-
-但验证集准确率不一定一直提高。
-
-模型可能开始过度记忆训练集，这叫过拟合。
-
-所以代码记录：
+代码比较验证准确率：
 
 ```python
-best_val_accuracy = 0.0
+if val_acc > max_acc:
+    torch.save(model, save_path)
+    max_acc = val_acc
 ```
 
-每次验证以后判断：
+模型训练越久，不代表验证效果一定越好。
 
-```python
-if val_accuracy > best_val_accuracy:
-    保存模型
+可能出现：
+
+```text
+训练准确率持续上升
+验证准确率先上升，后来下降
 ```
 
-这样最终得到的不是“最后一个 epoch 的模型”，而是“验证集表现最好的模型”。
+这通常说明模型越来越会记训练数据，却不一定更会处理新图片。
+
+保存验证准确率最高的模型，可以保留训练过程中泛化表现最好的一次。
+
+模型文件很大，所以只保存在本地 `model_save/`，不上传 GitHub。
 
 ---
 
-# 39. 修复后的 checkpoint 保存了什么？
+# 34. VGG、ResNet 与迁移学习
 
-博主原代码直接保存完整模型：
-
-```python
-torch.save(model, save_path)
-```
-
-修复后的代码保存一个字典：
+自定义模型可以写：
 
 ```python
-torch.save(
-    {
-        "epoch": epoch_index + 1,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "best_val_accuracy": best_val_accuracy,
-    },
-    checkpoint_path,
-)
+model = myModel(11)
 ```
 
-各字段含义：
-
-```text
-epoch                    保存时训练到了第几轮
-model_state_dict         模型参数
-optimizer_state_dict     优化器状态
-best_val_accuracy        当时最佳验证准确率
-```
-
-这种方式更容易明确知道文件里保存了什么，也更适合以后恢复训练。
-
-生成的 `.pth` 文件仍然可能很大，所以 `.gitignore` 会阻止它上传 GitHub。
-
----
-
-# 40. 为什么训练曲线保存为图片而不是弹窗？
-
-博主原代码使用：
+原代码实际使用：
 
 ```python
-plt.show()
+model, _ = initialize_model("vgg", 11, use_pretrained=True)
 ```
 
-在某些环境中，它会弹出窗口并阻塞程序。
+`initialize_model()` 还支持：
 
-修复后的代码使用：
+```text
+resnet18
+resnet50
+googlenet
+alexnet
+vgg
+squeezenet
+densenet
+inception
+```
+
+这些是 torchvision 提供的经典模型。
+
+使用预训练：
 
 ```python
-figure.savefig(output_path, dpi=150)
-plt.close(figure)
+use_pretrained=True
 ```
 
-训练过程中曲线会保存到：
+表示先加载模型在大型图片数据集上学习到的参数，再把最后一层改成 11 分类。
 
-```text
-assets/training_curves.png
+例如 ResNet18：
+
+```python
+num_ftrs = model_ft.fc.in_features
+model_ft.fc = nn.Linear(num_ftrs, num_classes)
 ```
-
-这样：
-
-- 不需要手动关闭窗口；
-- 远程服务器也能运行；
-- 训练结束后直接打开图片查看；
-- 程序不会因为窗口停在中间。
-
----
-
-# 41. `simple_class.py` 的完整流程
-
-单文件版从上到下分为：
-
-```text
-1. 导入库
-2. 设置项目路径和类别名称
-3. 固定随机种子
-4. 定义训练/验证 transforms
-5. 定义 FoodDataset
-6. 定义 SimpleCNN
-7. 定义 train_one_epoch
-8. 定义 validate
-9. 定义训练曲线保存函数
-10. 读取运行参数
-11. main() 中创建数据、模型、损失和优化器
-12. 执行 epoch 循环
-13. 保存最佳模型与曲线
-```
-
-第一次学习建议：
-
-1. 先不运行，完整读一遍；
-2. 在 `__getitem__` 中临时打印一张图片的 shape；
-3. 只运行 1 个 epoch；
-4. 观察 train loss、train acc、val loss、val acc；
-5. 再运行更多 epoch。
-
----
-
-# 42. 为什么还要拆成 `main.py + model_utils`？
-
-代码变长以后，把所有内容放在一个文件里会越来越难找。
-
-模块化版本按职责拆分：
-
-```text
-model_utils/data.py
-负责数据路径、Dataset、transforms、DataLoader、伪标签数据
-
-model_utils/model.py
-负责 SimpleCNN、ResNet、VGG 和分类头替换
-
-model_utils/train.py
-负责训练、验证、保存 checkpoint 和绘制曲线
-
-main.py
-负责选择参数，把各部分连接起来
-```
-
-可以把它想成一家小餐厅：
-
-```text
-data.py   准备食材
-model.py  定义厨具
-train.py  规定烹饪流程
-main.py   决定今天做什么以及使用哪些参数
-```
-
-拆分并没有增加新的训练原理，只是让文件职责更单一。
-
----
-
-# 43. ResNet18 和迁移学习
-
-模块化版本支持：
-
-```bash
-python main.py --model resnet18
-```
-
-ResNet18 是一个经典卷积网络。
-
-如果不加 `--pretrained`：
-
-```text
-使用 ResNet18 架构
-参数从随机状态开始训练
-```
-
-如果加上：
-
-```bash
-python main.py --model resnet18 --pretrained
-```
-
-程序会使用已经在 ImageNet 上训练过的参数。
 
 这叫迁移学习。
 
-直观理解：
-
-> 模型以前已经学过边缘、纹理和常见形状，现在把这些基础能力迁移到 Food-11。
-
-预训练模型原本输出 ImageNet 的类别。
-
-代码会把最后一层替换为：
-
-```python
-model.fc = nn.Linear(model.fc.in_features, 11)
-```
-
-让它输出 Food-11 的 11 个类别。
-
-第一次使用预训练权重时，torchvision 可能需要联网下载模型文件。
+第一次运行预训练模型时，可能需要联网下载权重。
 
 ---
 
-# 44. 什么是 linear probing？
+# 35. `main.py` 如何把模块连接起来？
 
-运行：
-
-```bash
-python main.py \
-  --model resnet18 \
-  --pretrained \
-  --linear-probing
-```
-
-代码先冻结原模型参数：
+导入三个模块：
 
 ```python
-for parameter in model.parameters():
-    parameter.requires_grad = False
+from model_utils.model import initialize_model
+from model_utils.train import train_val
+from model_utils.data import getDataLoader
 ```
 
-然后替换最后的分类头。
-
-新的分类头默认可以训练。
-
-所以训练时：
+可以读成：
 
 ```text
-ResNet18 原来的特征提取部分：不更新
-新的 11 分类层：更新
+model.py 给我模型
+data.py 给我 DataLoader
+train.py 帮我训练和验证
 ```
 
-这种方法训练更快、需要的显存更少，适合先验证预训练特征是否有用。
+设置主要参数：
 
-如果不冻结参数，而是让整个预训练模型继续训练，通常叫 fine-tuning，也就是微调。
+```python
+model_name = 'resnet18'
+num_class = 11
+batchSize = 32
+learning_rate = 1e-4
+loss = nn.CrossEntropyLoss()
+epoch = 10
+```
+
+读取三类数据：
+
+```python
+train_loader = getDataLoader(filepath, 'train', batchSize)
+val_loader = getDataLoader(filepath, 'val', batchSize)
+no_label_Loader = getDataLoader(filepath, 'train_unl', batchSize)
+```
+
+建立模型：
+
+```python
+model, input_size = initialize_model(
+    model_name,
+    num_class,
+    use_pretrained=False
+)
+```
+
+建立优化器：
+
+```python
+optimizer = torch.optim.AdamW(
+    model.parameters(),
+    lr=learning_rate,
+    weight_decay=1e-4
+)
+```
+
+最后把配置装进字典：
+
+```python
+trainpara = {...}
+```
+
+并调用：
+
+```python
+train_val(trainpara)
+```
+
+模块化版本的训练原理没有变化，只是参数通过字典一次传给训练函数。
 
 ---
 
-# 45. 什么是半监督学习和伪标签？
+# 36. 半监督学习和伪标签
 
-有标签图片：
+## 为什么需要半监督？
 
-```text
-图片 + 正确答案
-```
+有标签数据需要人工标注，数量通常较少。
 
-无标签图片：
+无标签图片容易获得，但没有正确答案，不能直接计算 CrossEntropyLoss。
 
-```text
-只有图片，没有答案
-```
-
-伪标签的基本流程是：
+伪标签方法：
 
 ```text
 先用有标签数据训练模型
-          ↓
+        ↓
 模型预测无标签图片
-          ↓
-只保留置信度很高的预测
-          ↓
-把预测类别当作临时标签
-          ↓
-加入后续训练
+        ↓
+取得 Softmax 最大概率
+        ↓
+只保留置信度超过阈值的图片
+        ↓
+把预测类别作为临时标签
+        ↓
+继续训练
 ```
 
-运行时加：
+## `semiDataset`
 
-```bash
-python main.py --semi
+初始化时调用：
+
+```python
+x, y = self.get_label(no_label_loder, model, device, thres)
 ```
 
-默认设置是：
+x 是筛选出的原始图片。
+
+y 是模型为这些图片预测的类别。
+
+## 置信度阈值
+
+代码：
+
+```python
+if prob > thres:
+```
+
+当 `thres=0.99` 时，只有最大预测概率超过 99% 的图片才会被使用。
+
+阈值高：
 
 ```text
-验证准确率至少达到 0.70
-每 3 个 epoch 更新一次伪标签
-只接收最大概率至少为 0.99 的图片
+数量较少，但通常更可靠
 ```
 
-为什么阈值设置很高？
+阈值低：
 
-因为伪标签可能是错的。
+```text
+数量更多，但错误伪标签可能增加
+```
 
-如果把大量错误答案重新喂给模型，模型可能越学越错。
-
-第一次学习时不要开启 `--semi`。
-
-先完全看懂普通有监督训练，再把半监督作为进阶内容。
+第一次学习建议先把半监督关闭，只理解正常训练。
 
 ---
 
-# 46. 原项目中修复了哪些问题？
+# 37. 原代码修复了什么？
 
-这次整理保留了博主代码的学习思路，但修复了会影响运行和上传的问题。
+这次没有更换你的模型结构，也没有新增陌生训练框架。
 
-## 46.1 删除旧电脑绝对路径
+只进行了小范围修复。
 
-原代码使用：
+## 37.1 路径修复
+
+原 `simple_class.py` 写死了：
 
 ```text
-F:\pycharm\beike\classification\...
+F:\pycharm\beike\...
 ```
 
-这个路径只在原电脑有效。
+换电脑后一定找不到。
 
-修复后默认以当前项目目录为基础：
+现在使用：
 
 ```python
-PROJECT_DIR = Path(__file__).resolve().parent
+base_dir = os.path.dirname(os.path.abspath(__file__))
 ```
 
-也可以通过 `--data-root` 指定任意数据目录。
+再拼接：
 
-## 46.2 增加 main 入口保护
+```python
+data_dir = os.path.join(base_dir, "data", "food-11_sample")
+```
 
-现在训练只会在直接运行文件时启动：
+这和 COVID 项目修复路径的方式一致。
+
+## 37.2 增加 main 保护
+
+原代码只要被 import，就会马上读取数据并开始训练。
+
+现在：
 
 ```python
 if __name__ == "__main__":
     main()
 ```
 
-导入模块时不会突然开始读取数据和训练。
+只有直接运行时才训练。
 
-## 46.3 修复半监督函数参数数量
+这也是 `Python语法速补.md` 中讲过的内容。
 
-原 `train.py` 给 `get_semi_loader` 传了五个参数，但函数只接收四个参数。
+## 37.3 Softmax 指定维度
 
-修复后统一为：
+从：
 
 ```python
-get_pseudo_label_loader(
-    unlabeled_loader,
-    model,
-    device,
-    threshold,
-)
+nn.Softmax()
 ```
 
-## 46.4 修复无标签 loader 变量混乱
+改为：
 
-原代码同时使用 `semi_loader`、`no_label_Loader` 等相近名称，容易把“原始无标签数据”和“伪标签数据”混在一起。
-
-修复后区分为：
-
-```text
-unlabeled_loader   原始无标签图片
-pseudo_loader      经过模型筛选后的伪标签图片
+```python
+nn.Softmax(dim=1)
 ```
 
-## 46.5 验证集不再打乱
+明确沿 11 个类别计算概率。
 
-现在只有训练集使用：
+## 37.4 半监督 loss 修复
+
+原半监督循环错误累计了上一段的 `train_bat_loss`。
+
+现在改为：
+
+```python
+semi_loss += semi_bat_loss.cpu().item()
+```
+
+## 37.5 半监督准确率分母修复
+
+原代码用训练集长度当分母。
+
+现在使用：
+
+```python
+semi_loader.dataset.__len__()
+```
+
+## 37.6 验证集不打乱
+
+从：
 
 ```python
 shuffle=True
 ```
 
-验证集、测试集和无标签数据均使用稳定顺序。
-
-## 46.6 不再一次性把所有图片装入内存
-
-Dataset 只保存路径，需要某张图片时再读取。
-
-## 46.7 明确处理多余的 `11` 类目录
-
-Food-11 的合法目录是 `00–10`。
-
-你原来的 sample 数据中还有 `11`，修复后的代码会显示提示并忽略它，避免悄悄造成类别数混乱。
-
-建议以后重新制作 sample 数据时，只保留 `00–10`。
-
-## 46.8 修复最佳准确率比较
-
-原模块化代码在配置中传入 `max_acc`，进入函数后又把它重设为 0，而且一部分代码拿“正确数量”与“比例”比较。
-
-修复后始终使用 0 到 1 之间的验证准确率：
+改为：
 
 ```python
-if val_accuracy > best_val_accuracy:
+shuffle=False
 ```
 
-## 46.9 不在验证阶段保存 GPU 输出列表
+## 37.7 模块化半监督参数修复
 
-原代码不断把 `val_pred` 加进 `val_rel`，但后面没有使用，可能增加显存占用。
-
-修复后删除了这部分。
-
-## 46.10 使用 PyTorch Tensor 计算正确数量
-
-不再把每批输出转换成 NumPy 后计算：
+原代码写成：
 
 ```python
-(logits.argmax(dim=1) == labels).sum().item()
+get_semi_loader(
+    semi_loader,
+    semi_loader,
+    model,
+    device,
+    conf_thres
+)
 ```
 
-这样更直接，也减少 CPU 和 GPU 之间不必要的数据转换。
+函数实际只接收四个参数。
 
-## 46.11 使用新的 torchvision 权重写法
-
-修复后的 ResNet18 使用：
+现在改为：
 
 ```python
-models.ResNet18_Weights.DEFAULT
+get_semi_loader(
+    semi_loader,
+    model,
+    device,
+    conf_thres
+)
 ```
 
-不再使用逐渐弃用的 `pretrained=True` 参数。
+## 37.8 保留传入的 max_acc
 
-## 46.12 删除没有使用的依赖
+原 `train.py` 先读取：
 
-原文件导入了 `cv2`、`sklearn`、`timm` 等当前代码没有使用的内容。
+```python
+max_acc = para['max_acc']
+```
 
-修复后删除这些导入，降低安装难度。
+后面又立刻写：
 
-## 46.13 模型和大数据不上传 GitHub
+```python
+max_acc = 0
+```
 
-完整数据约 914.6 MiB，原模型目录约 576.9 MiB。
+等于把传入值丢掉。
 
-其中一个模型文件超过 500 MB，普通 GitHub 仓库无法直接接收。
+现在删除了第二次重置。
 
-修复后的 `.gitignore` 会忽略数据和 `.pth` 文件。
+## 37.9 删除没有使用的 import
 
-仓库只保存代码、笔记、数据下载说明和小型示例图。
+删除了没有实际使用的 `cv2`、`sklearn` 和 `timm` 导入。
+
+它们原本可能导致：
+
+```text
+ModuleNotFoundError
+```
+
+这不会改变训练逻辑。
+
+## 37.10 防止大文件上传
+
+`.gitignore` 会忽略：
+
+- `food-11`；
+- `food-11_sample`；
+- FashionMNIST；
+- `.pth` 模型；
+- `.pyc` 缓存；
+- `.idea`。
+
+代码、笔记、数据说明和小曲线图仍然会上传。
 
 ---
 
-# 47. 如何安装与运行？
+# 38. 如何运行项目？
 
-## 47.1 安装依赖
+## 第一步：安装依赖
 
-进入项目目录：
+进入目录：
 
-```bash
+```powershell
 cd 03_food_classification
 ```
 
 安装：
 
-```bash
+```powershell
 pip install -r requirements.txt
 ```
 
-如果你需要 GPU 版本的 PyTorch，应按照自己 CUDA 环境选择 PyTorch 官方提供的安装命令。
+## 第二步：放置 sample 数据
 
-## 47.2 放置数据
-
-默认位置：
+将原来的：
 
 ```text
-03_food_classification/data/food-11/
+food-11_sample
 ```
 
-完整结构见：
+复制到：
 
 ```text
-data/README.md
+03_food_classification/data/food-11_sample
 ```
 
-也可以不复制数据，直接指向电脑上的现有目录。
+它只在本地使用，不会上传。
 
-## 47.3 第一次只运行 1 个 epoch
-
-```bash
-python simple_class.py \
-  --data-root "D:/Desktop/李哥深度学习/第四五节，分类代码/food_classification/food-11_sample" \
-  --epochs 1
-```
-
-Windows PowerShell 中也可以写成一行：
+## 第三步：运行单文件版本
 
 ```powershell
-python simple_class.py --data-root "D:/Desktop/李哥深度学习/第四五节，分类代码/food_classification/food-11_sample" --epochs 1
+python simple_class.py
 ```
 
-## 47.4 使用完整数据训练
+当前单文件版本默认：
 
-```powershell
-python simple_class.py --data-root "D:/Desktop/李哥深度学习/第四五节，分类代码/food_classification/food-11" --epochs 10
+```text
+模型：预训练 VGG11_bn
+batch size：16
+学习率：0.001
+epoch：15
+伪标签阈值：0.99
 ```
 
-## 47.5 运行模块化 SimpleCNN
+如果第一次运行太慢，可以先把：
 
-```powershell
-python main.py --data-root "D:/Desktop/李哥深度学习/第四五节，分类代码/food_classification/food-11" --model simple_cnn --epochs 10
+```python
+epochs = 15
 ```
 
-## 47.6 使用预训练 ResNet18
+改成：
 
-```powershell
-python main.py --data-root "D:/Desktop/李哥深度学习/第四五节，分类代码/food_classification/food-11" --model resnet18 --pretrained --epochs 10
+```python
+epochs = 1
 ```
 
-## 47.7 最后再尝试半监督
+## 第四步：运行模块化版本
 
 ```powershell
-python main.py --data-root "D:/Desktop/李哥深度学习/第四五节，分类代码/food_classification/food-11" --model resnet18 --pretrained --semi --epochs 15
+python main.py
+```
+
+它默认：
+
+```text
+模型：ResNet18
+是否预训练：False
+batch size：32
+学习率：0.0001
+epoch：10
 ```
 
 ---
 
-# 48. 常见报错怎么处理？
+# 39. 常见错误
 
-## 找不到数据目录
+## 找不到文件夹
 
-错误类似：
-
-```text
-FileNotFoundError: 找不到数据目录
-```
-
-检查 `--data-root` 指向的是 `food-11` 根目录，而不是直接指向 `training/labeled`。
-
-正确：
+检查数据是否放在：
 
 ```text
---data-root D:/.../food-11
+03_food_classification/data/food-11_sample
 ```
 
-错误：
+不要只复制 `training/labeled`，需要保持完整层级。
+
+## 缺少 CUDA
+
+输出：
 
 ```text
---data-root D:/.../food-11/training/labeled
+device: cpu
 ```
 
-## 缺少类别目录
-
-如果提示缺少 `00`、`01` 等目录，说明数据结构不完整。
-
-训练集和验证集都应包含 `00–10`。
+不代表代码错误，只是会使用 CPU，训练速度更慢。
 
 ## CUDA out of memory
 
-表示显存不足。
-
-先减小 batch size：
-
-```powershell
-python main.py --batch-size 8
-```
-
-还不够就使用：
-
-```powershell
-python main.py --batch-size 4
-```
-
-## 训练速度很慢
-
-确认输出中的：
-
-```text
-device: cuda
-```
-
-如果是 `device: cpu`，模型正在使用 CPU。
-
-CPU 也能运行，但图片分类会明显更慢。
-
-第一次可以使用 sample 数据和 1 个 epoch 验证流程。
-
-## 下载预训练权重失败
-
-去掉：
-
-```text
---pretrained
-```
-
-就不会下载权重，但模型将从随机参数开始训练。
-
-## 标签类型错误
-
-如果 CrossEntropyLoss 提示需要 Long，检查标签是否使用：
+显存不足时降低 batch size：
 
 ```python
-dtype=torch.long
-```
-
-## shape 不匹配
-
-先打印：
-
-```python
-print(images.shape)
-print(logits.shape)
-print(labels.shape)
-```
-
-正常情况下应类似：
-
-```text
-images: [batch, 3, 224, 224]
-logits: [batch, 11]
-labels: [batch]
-```
-
----
-
-# 49. 初学者建议做的实验
-
-不要一次修改很多东西。
-
-每次只改一个变量，并记录结果。
-
-## 实验 1：修改 batch size
-
-比较：
-
-```text
-batch_size = 8
-batch_size = 16
-batch_size = 32
-```
-
-观察：
-
-- 训练速度；
-- 显存占用；
-- loss 波动；
-- 验证准确率。
-
-## 实验 2：关闭水平翻转
-
-暂时删除：
-
-```python
-transforms.RandomHorizontalFlip()
-```
-
-观察验证准确率是否变化。
-
-## 实验 3：改变学习率
-
-比较：
-
-```text
-1e-3
-1e-4
-1e-5
-```
-
-学习率过大，loss 可能剧烈波动。
-
-学习率过小，loss 下降可能很慢。
-
-## 实验 4：去掉 BatchNorm
-
-只在复制的实验代码中暂时去掉 BatchNorm，观察训练是否更加不稳定。
-
-## 实验 5：减少卷积通道
-
-把：
-
-```text
-64 → 128 → 256 → 512
+batchSize = 32
 ```
 
 改为：
 
-```text
-32 → 64 → 128 → 256
+```python
+batchSize = 8
 ```
 
-观察速度、参数量与准确率。
+## 预训练模型下载失败
 
-## 实验 6：SimpleCNN 对比 ResNet18
+第一次使用：
 
-分别运行：
-
-```powershell
-python main.py --model simple_cnn --epochs 10
-python main.py --model resnet18 --epochs 10
+```python
+use_pretrained=True
 ```
 
-保证其他参数尽量一致。
+可能需要联网下载权重。
 
-## 实验 7：预训练对比随机初始化
+无法下载时，临时改成 False。
+
+## 矩阵 shape 不匹配
+
+自定义 `myModel` 假设输入是 224×224。
+
+如果改变图片尺寸，最后的：
+
+```python
+nn.Linear(25088, 1000)
+```
+
+也可能需要重新计算。
+
+## 内存占用太高
+
+原 Dataset 会一次读取全部图片。
+
+第一次使用 sample 数据。
+
+完整数据如果内存不足，后续可以单独学习“只保存路径、按需读图”的 Dataset 写法，但这不属于本次最小修复。
+
+---
+
+# 40. 初学者实验
+
+每次只修改一个参数，才能知道结果变化来自哪里。
+
+## 实验 1：只训练 1 个 epoch
+
+```python
+epochs = 1
+```
+
+目标不是得到高准确率，而是确认：
+
+- 数据能读取；
+- 模型能前向传播；
+- loss 能计算；
+- backward 能运行；
+- 模型能保存。
+
+## 实验 2：修改 batch size
 
 比较：
 
-```powershell
-python main.py --model resnet18 --epochs 10
-python main.py --model resnet18 --pretrained --epochs 10
+```text
+8
+16
+32
 ```
 
-## 实验 8：只训练分类头
+观察速度和显存。
 
-```powershell
-python main.py --model resnet18 --pretrained --linear-probing --epochs 10
+## 实验 3：关闭随机旋转
+
+暂时注释：
+
+```python
+transforms.RandomRotation(50)
 ```
 
-观察训练速度和准确率。
+观察验证准确率变化。
 
-## 实验 9：查看不同置信度阈值
+## 实验 4：使用自定义 CNN
 
-学完普通训练后，再比较：
+把：
+
+```python
+model, _ = initialize_model("vgg", 11, use_pretrained=True)
+```
+
+换成：
+
+```python
+model = myModel(11)
+```
+
+比较训练速度和准确率。
+
+## 实验 5：比较预训练与不预训练
+
+分别运行：
+
+```python
+use_pretrained=True
+```
+
+和：
+
+```python
+use_pretrained=False
+```
+
+## 实验 6：修改学习率
+
+比较：
+
+```text
+0.01
+0.001
+0.0001
+```
+
+学习率太大可能使 loss 波动。
+
+学习率太小可能学习很慢。
+
+## 实验 7：修改伪标签阈值
+
+完全理解普通训练以后，再比较：
 
 ```text
 0.90
@@ -2108,126 +1943,106 @@ python main.py --model resnet18 --pretrained --linear-probing --epochs 10
 0.99
 ```
 
-阈值越高，伪标签数量通常越少，但可信度通常更高。
+观察筛选出的伪标签数量。
 
 ---
 
-# 50. 完整知识地图
+# 41. 完整知识地图
 
 ```text
 图片文件
-  ↓ PIL.Image.open
-RGB 图片
-  ↓ transforms
-统一尺寸、增强、Tensor、标准化
+  ↓ Image.open
+PIL 图片
+  ↓ resize
+224×224×3 NumPy 图片
   ↓ Dataset.__getitem__
-[3, 224, 224] + 整数标签
+随机增强 + ToTensor
+  ↓
+[3, 224, 224]
   ↓ DataLoader
-[batch, 3, 224, 224] + [batch]
+[batch, 3, 224, 224]
   ↓ CNN
 卷积提取局部特征
   ↓
-BatchNorm + ReLU + Pool
+BatchNorm + ReLU
   ↓
-更高层图片特征
-  ↓ AdaptiveAvgPool + flatten
-[batch, 512]
-  ↓ Linear
+MaxPool 缩小高宽
+  ↓
+重复多层
+  ↓
+[batch, 512, 7, 7]
+  ↓ view 展平
+[batch, 25088]
+  ↓ 全连接层
 [batch, 11] logits
   ↓ CrossEntropyLoss
-一个 loss 数字
+loss
   ↓ backward
-计算梯度
+梯度
   ↓ optimizer.step
-更新参数
+参数更新
   ↓
-重复多个 batch 和 epoch
+重复 batch 和 epoch
   ↓
 验证集 accuracy
   ↓
-保存最佳 checkpoint
+保存最佳模型
 ```
 
-半监督是在这条主线之外增加：
+半监督部分是在普通训练之外增加：
 
 ```text
 无标签图片
   ↓ 当前模型预测
-概率和类别
-  ↓ 置信度筛选
-伪标签数据集
+Softmax 概率
+  ↓ 高置信度筛选
+图片 + 伪标签
   ↓
 加入训练
 ```
 
 ---
 
-# 51. 学完以后下一步学什么？
+# 42. 一句话总结
 
-如果你能解释下面这些问题，说明你已经真正理解了这个项目：
-
-1. 图片为什么可以表示为 Tensor？
-2. `[32, 3, 224, 224]` 中每个数字代表什么？
-3. 为什么训练集和验证集的 transform 不同？
-4. Dataset 和 DataLoader 分别负责什么？
-5. 卷积层的输入通道和输出通道是什么？
-6. 池化为什么会改变图片特征图大小？
-7. 模型为什么输出 11 个数？
-8. logits 和概率有什么区别？
-9. 为什么 CrossEntropyLoss 不需要手动 Softmax？
-10. accuracy 是怎样计算的？
-11. 为什么验证时需要 `eval()` 和 `no_grad()`？
-12. 为什么保存最佳验证模型而不是最后一个模型？
-13. 预训练与从零训练有什么区别？
-14. 伪标签为什么可能帮助训练，也可能伤害训练？
-
-下一步可以学习：
+这个项目真正新增的是：
 
 ```text
-加载 checkpoint 做单张图片预测
-        ↓
-混淆矩阵与每类准确率
-        ↓
-学习率调度器
-        ↓
-早停 Early Stopping
-        ↓
-更系统的迁移学习和微调
-        ↓
-目标检测 / 图像分割
+如何把图片变成 Tensor
+如何用 CNN 提取图片特征
+如何用 CrossEntropyLoss 训练分类模型
+如何用 accuracy 检查分类效果
 ```
 
----
-
-# 一句话总结
-
-Food-11 图片分类虽然比 COVID 回归多了图片变换、CNN、交叉熵和准确率，但训练本质没有变化：
+但它仍然建立在前两个项目的基础上：
 
 $$
 \boxed{
-图片
+数据
 \rightarrow
-模型输出类别分数
+模型预测
 \rightarrow
-计算交叉熵
+计算误差
 \rightarrow
 反向传播
 \rightarrow
 更新参数
 \rightarrow
-验证准确率
+验证效果
 }
 $$
 
-真正需要掌握的不是背住每一行代码，而是能把下面这条主线用自己的话讲出来：
+第一次学习不需要同时掌握 VGG、ResNet 和半监督。
 
-```text
-数据怎么进来
-模型怎么预测
-loss 怎么计算
-参数怎么更新
-效果怎么验证
-最佳模型怎么保存
-```
+先做到：
 
-理解这条主线以后，换成 ResNet、VGG，甚至以后学习目标检测，都会更容易找到代码中的共同结构。
+1. 能说出图片 batch 的四个维度；
+2. 能说明 Dataset 返回图片和标签；
+3. 能说明 CNN 为什么把通道变多、高宽变小；
+4. 能说明模型为什么输出 11 个数；
+5. 能区分 logits、Softmax 和预测类别；
+6. 能说明 CrossEntropyLoss 的输入；
+7. 能说明准确率怎样计算；
+8. 能说出训练与验证的区别。
+
+这八点真正理解以后，再继续学习预训练模型和伪标签会容易很多。

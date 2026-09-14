@@ -1,147 +1,86 @@
-"""Food-11 模块化训练入口。先读 simple_class.py，再学习本文件。"""
-
-import argparse
-import os
 import random
-from pathlib import Path
-
-import numpy as np
 import torch
 import torch.nn as nn
+import numpy as np
+import os
 
-from model_utils.data import CLASS_NAMES, get_data_loader
+
 from model_utils.model import initialize_model
-from model_utils.train import train_model
+from model_utils.train import train_val
+from model_utils.data import getDataLoader
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
+# os.environ['CUDA_VISIBLE_DEVICES']='0,1'
 
 
-def seed_everything(seed: int) -> None:
-    """固定随机种子，让多次实验尽可能得到相近结果。"""
-    random.seed(seed)
-    np.random.seed(seed)
+def seed_everything(seed):
     torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+#################################################################
+seed_everything(0)
+###############################################
+
+# 后面的相对路径都以当前 main.py 所在目录为基准，
+# 这样从其他目录运行 main.py 时也能找到数据和模型文件夹。
+base_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="训练 Food-11 图片分类模型")
-    parser.add_argument(
-        "--data-root",
-        type=Path,
-        default=PROJECT_DIR / "data" / "food-11",
-        help="Food-11 数据根目录",
-    )
-    parser.add_argument(
-        "--model",
-        choices=["simple_cnn", "resnet18", "resnet50", "vgg11_bn"],
-        default="simple_cnn",
-        help="要训练的模型",
-    )
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--learning-rate", type=float, default=1e-4)
-    parser.add_argument("--num-workers", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument(
-        "--pretrained",
-        action="store_true",
-        help="使用 torchvision 官方预训练权重（首次使用可能需要联网）",
-    )
-    parser.add_argument(
-        "--linear-probing",
-        action="store_true",
-        help="冻结预训练模型，只训练新的分类头",
-    )
-    parser.add_argument(
-        "--semi",
-        action="store_true",
-        help="达到准确率阈值后使用无标签数据生成伪标签",
-    )
-    parser.add_argument("--semi-start-accuracy", type=float, default=0.70)
-    parser.add_argument("--pseudo-label-threshold", type=float, default=0.99)
-    return parser.parse_args()
+model_name = 'resnet18'
+##########################################
+
+num_class = 11
+batchSize = 32
+learning_rate = 1e-4
+loss = nn.CrossEntropyLoss()
+epoch = 10
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+##########################################
+filepath = os.path.join(base_dir, 'data', 'food-11_sample')
+# filepath = os.path.join(base_dir, 'data', 'food-11')
+##########################
+
+#读数据
+train_loader = getDataLoader(filepath, 'train', batchSize)
+val_loader = getDataLoader(filepath, 'val', batchSize)
+no_label_Loader = getDataLoader(filepath,'train_unl', batchSize)
 
 
-def main() -> None:
-    args = parse_args()
-    seed_everything(args.seed)
+#模型和超参数
+model, input_size = initialize_model(model_name, num_class, use_pretrained=False)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("device:", device)
-    print("类别数:", len(CLASS_NAMES))
+print(input_size)
 
-    model, input_size = initialize_model(
-        args.model,
-        len(CLASS_NAMES),
-        linear_probing=args.linear_probing,
-        use_pretrained=args.pretrained,
-    )
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate,weight_decay=1e-4)
 
-    train_loader = get_data_loader(
-        str(args.data_root),
-        "train",
-        args.batch_size,
-        input_size=input_size,
-        normalize=True,
-        num_workers=args.num_workers,
-    )
-    val_loader = get_data_loader(
-        str(args.data_root),
-        "val",
-        args.batch_size,
-        input_size=input_size,
-        normalize=True,
-        num_workers=args.num_workers,
-    )
+save_path = os.path.join(base_dir, 'model_save', 'model.pth')
+os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
-    unlabeled_loader = None
-    if args.semi:
-        unlabeled_loader = get_data_loader(
-            str(args.data_root),
-            "train_unl",
-            args.batch_size,
-            input_size=input_size,
-            normalize=True,
-            num_workers=args.num_workers,
-        )
-
-    trainable_parameters = [
-        parameter for parameter in model.parameters() if parameter.requires_grad
-    ]
-    optimizer = torch.optim.AdamW(
-        trainable_parameters,
-        lr=args.learning_rate,
-        weight_decay=1e-4,
-    )
-    criterion = nn.CrossEntropyLoss()
-
-    checkpoint_path = PROJECT_DIR / "checkpoints" / f"best_{args.model}.pth"
-    curve_path = PROJECT_DIR / "assets" / "training_curves.png"
-
-    train_model(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        optimizer=optimizer,
-        criterion=criterion,
-        device=device,
-        epochs=args.epochs,
-        checkpoint_path=str(checkpoint_path),
-        curve_path=str(curve_path),
-        model_name=args.model,
-        unlabeled_loader=unlabeled_loader,
-        use_semi_supervised=args.semi,
-        semi_start_accuracy=args.semi_start_accuracy,
-        pseudo_label_threshold=args.pseudo_label_threshold,
-    )
+trainpara = {
+            "model" : model,
+             'train_loader': train_loader,
+             'val_loader': val_loader,
+             'no_label_Loader': no_label_Loader,
+             'optimizer': optimizer,
+            'batchSize': batchSize,
+             'loss': loss,
+             'epoch': epoch,
+             'device': device,
+             'save_path': save_path,
+             'save_acc': True,
+             'max_acc': 0.5,
+             'val_epoch' : 1,
+             'acc_thres' : 0.7,
+             'conf_thres' : 0.99,
+             'do_semi' : True,
+            "pre_path" : None
+             }
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    train_val(trainpara)

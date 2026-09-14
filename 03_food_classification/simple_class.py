@@ -1,310 +1,321 @@
-"""
-Food-11 图片分类的单文件入门版。
-
-这个文件故意把数据、模型、训练写在一起，方便第一次学习时从上往下阅读。
-理解后，再阅读 main.py 和 model_utils/ 中的模块化版本。
-"""
-
-import argparse
-import os
 import random
-import time
-from pathlib import Path
-
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 import torch.nn as nn
-from PIL import Image
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+import numpy as np
+import os
+from PIL import Image #读取图片数据
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-
-
-PROJECT_DIR = Path(__file__).resolve().parent
-CLASS_NAMES = (
-    "Bread",
-    "Dairy product",
-    "Dessert",
-    "Egg",
-    "Fried food",
-    "Meat",
-    "Noodles/Pasta",
-    "Rice",
-    "Seafood",
-    "Soup",
-    "Vegetable/Fruit",
-)
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-
-
-def seed_everything(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
+from torchvision import transforms
+import time
+import matplotlib.pyplot as plt
+from model_utils.model import initialize_model
+def seed_everything(seed):
     torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+#################################################################
+seed_everything(0)
+###############################################
+
+
+HW = 224
+
 
 
 train_transform = transforms.Compose(
     [
+        transforms.ToPILImage(),   #224， 224， 3模型  ：3, 224, 224
         transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225),
-        ),
+        transforms.RandomRotation(50),
+        transforms.ToTensor()
     ]
 )
 
 val_transform = transforms.Compose(
     [
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225),
-        ),
+        transforms.ToPILImage(),   #224， 224， 3模型  ：3, 224, 224
+        transforms.ToTensor()
     ]
 )
 
-
-class FoodDataset(Dataset):
-    """读取有标签的训练集或验证集。"""
-
-    def __init__(self, data_root: Path, mode: str):
-        if mode not in {"train", "val"}:
-            raise ValueError("mode 必须是 train 或 val")
-
+class food_Dataset(Dataset):
+    def __init__(self, path, mode="train"):
         self.mode = mode
-        self.transform = train_transform if mode == "train" else val_transform
-        split = Path("training") / "labeled" if mode == "train" else Path("validation")
-        self.split_dir = data_root / split
+        if mode == "semi":
+            self.X = self.read_file(path)
+        else:
+            self.X, self.Y = self.read_file(path)
+            self.Y = torch.LongTensor(self.Y)  #标签转为长整形\
 
-        if not self.split_dir.is_dir():
-            raise FileNotFoundError(
-                f"找不到数据目录：{self.split_dir}\n"
-                "请先阅读 data/README.md 并放置数据集。"
-            )
+        if mode == "train":
+            self.transform = train_transform
+        else:
+            self.transform = val_transform
 
-        self.image_paths = []
-        self.labels = []
+    def read_file(self, path):
+        if self.mode == "semi":
+            file_list = os.listdir(path)
+            xi = np.zeros((len(file_list), HW, HW, 3), dtype=np.uint8)
+            # 列出文件夹下所有文件名字
+            for j, img_name in enumerate(file_list):
+                img_path = os.path.join(path, img_name)
+                img = Image.open(img_path)
+                img = img.resize((HW, HW))
+                xi[j, ...] = img
+            print("读到了%d个数据" % len(xi))
+            return xi
+        else:
+            for i in tqdm(range(11)):
+                file_dir = path + "/%02d" % i
+                file_list = os.listdir(file_dir)
 
-        expected = {f"{index:02d}" for index in range(len(CLASS_NAMES))}
-        existing = {path.name for path in self.split_dir.iterdir() if path.is_dir()}
-        ignored = sorted(existing - expected)
-        if ignored:
-            print("以下非 Food-11 类别目录已忽略：" + ", ".join(ignored))
+                xi = np.zeros((len(file_list), HW, HW, 3), dtype=np.uint8)
+                yi = np.zeros(len(file_list), dtype=np.uint8)
 
-        for label in range(len(CLASS_NAMES)):
-            class_dir = self.split_dir / f"{label:02d}"
-            if not class_dir.is_dir():
-                raise FileNotFoundError(f"缺少类别目录：{class_dir}")
+                # 列出文件夹下所有文件名字
+                for j, img_name in enumerate(file_list):
+                    img_path = os.path.join(file_dir, img_name)
+                    img = Image.open(img_path)
+                    img = img.resize((HW, HW))
+                    xi[j, ...] = img
+                    yi[j] = i
 
-            class_images = sorted(
-                path
-                for path in class_dir.iterdir()
-                if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-            )
-            self.image_paths.extend(class_images)
-            self.labels.extend([label] * len(class_images))
+                if i == 0:
+                    X = xi
+                    Y = yi
+                else:
+                    X = np.concatenate((X, xi), axis=0)
+                    Y = np.concatenate((Y, yi), axis=0)
+            print("读到了%d个数据" % len(Y))
+            return X, Y
 
-        if not self.image_paths:
-            raise RuntimeError(f"没有找到图片：{self.split_dir}")
+    def __getitem__(self, item):
+        if self.mode == "semi":
+            return self.transform(self.X[item]), self.X[item]
+        else:
+            return self.transform(self.X[item]), self.Y[item]
 
-        print(f"{mode}：读取到 {len(self.image_paths)} 张图片")
+    def __len__(self):
+        return len(self.X)
 
-    def __getitem__(self, index: int):
-        with Image.open(self.image_paths[index]) as image:
-            image = image.convert("RGB")
-            image_tensor = self.transform(image)
+class semiDataset(Dataset):
+    def __init__(self, no_label_loder, model, device, thres=0.99):
+        x, y = self.get_label(no_label_loder, model, device, thres)
+        if x == []:
+            self.flag = False
 
-        label = torch.tensor(self.labels[index], dtype=torch.long)
-        return image_tensor, label
+        else:
+            self.flag = True
+            self.X = np.array(x)
+            self.Y = torch.LongTensor(y)
+            self.transform = train_transform
+    def get_label(self, no_label_loder, model, device, thres):
+        model = model.to(device)
+        pred_prob = []
+        labels = []
+        x = []
+        y = []
+        soft = nn.Softmax(dim=1)
+        with torch.no_grad():
+            for bat_x, _ in no_label_loder:
+                bat_x = bat_x.to(device)
+                pred = model(bat_x)
+                pred_soft = soft(pred)
+                pred_max, pred_value = pred_soft.max(1)
+                pred_prob.extend(pred_max.cpu().numpy().tolist())
+                labels.extend(pred_value.cpu().numpy().tolist())
 
-    def __len__(self) -> int:
-        return len(self.image_paths)
+        for index, prob in enumerate(pred_prob):
+            if prob > thres:
+                x.append(no_label_loder.dataset[index][1])   #调用到原始的getitem
+                y.append(labels[index])
+        return x, y
+
+    def __getitem__(self, item):
+        return self.transform(self.X[item]), self.Y[item]
+    def __len__(self):
+        return len(self.X)
+
+def get_semi_loader(no_label_loder, model, device, thres):
+    semiset = semiDataset(no_label_loder, model, device, thres)
+    if semiset.flag == False:
+        return None
+    else:
+        semi_loader = DataLoader(semiset, batch_size=16, shuffle=False)
+        return semi_loader
+
+class myModel(nn.Module):
+    def __init__(self, num_class):
+        super(myModel, self).__init__()
+        #3 *224 *224  -> 512*7*7 -> 拉直 -》全连接分类
+        self.conv1 = nn.Conv2d(3, 64, 3, 1, 1)    # 64*224*224
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(2)   #64*112*112
 
 
-class SimpleCNN(nn.Module):
-    """四个卷积阶段组成的入门 CNN。"""
-
-    def __init__(self, num_classes: int = 11):
-        super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(64, 128, 3, 1, 1),    # 128*112*112
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.ReLU(),
+            nn.MaxPool2d(2)   #128*56*56
         )
-        self.classifier = nn.Linear(512, num_classes)
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(128, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(2)   #256*28*28
+        )
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(256, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(2)   #512*14*14
+        )
+
+        self.pool2 = nn.MaxPool2d(2)    #512*7*7
+        self.fc1 = nn.Linear(25088, 1000)   #25088->1000
+        self.relu2 = nn.ReLU()
+        self.fc2 = nn.Linear(1000, num_class)  #1000-11
 
     def forward(self, x):
-        x = self.features(x)
-        x = x.flatten(start_dim=1)
-        return self.classifier(x)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.pool1(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.pool2(x)
+        x = x.view(x.size()[0], -1)
+        x = self.fc1(x)
+        x = self.relu2(x)
+        x = self.fc2(x)
+        return x
+
+def train_val(model, train_loader, val_loader, no_label_loader, device, epochs, optimizer, loss, thres, save_path):
+    model = model.to(device)
+    semi_loader = None
+    plt_train_loss = []
+    plt_val_loss = []
+
+    plt_train_acc = []
+    plt_val_acc = []
+
+    max_acc = 0.0
+
+    for epoch in range(epochs):
+        train_loss = 0.0
+        val_loss = 0.0
+        train_acc = 0.0
+        val_acc = 0.0
+        semi_loss = 0.0
+        semi_acc = 0.0
 
 
-def train_one_epoch(model, loader, optimizer, criterion, device):
-    model.train()
-    total_loss = 0.0
-    correct = 0
-    total = 0
-
-    for images, labels in tqdm(loader, leave=False):
-        images = images.to(device)
-        labels = labels.to(device)
-
-        optimizer.zero_grad()
-        logits = model(images)
-        loss = criterion(logits, labels)
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item() * images.size(0)
-        correct += (logits.argmax(dim=1) == labels).sum().item()
-        total += images.size(0)
-
-    return total_loss / total, correct / total
-
-
-def validate(model, loader, criterion, device):
-    model.eval()
-    total_loss = 0.0
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for images, labels in loader:
-            images = images.to(device)
-            labels = labels.to(device)
-
-            logits = model(images)
-            loss = criterion(logits, labels)
-
-            total_loss += loss.item() * images.size(0)
-            correct += (logits.argmax(dim=1) == labels).sum().item()
-            total += images.size(0)
-
-    return total_loss / total, correct / total
-
-
-def save_curves(history, output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    epochs = range(1, len(history["train_loss"]) + 1)
-    figure, axes = plt.subplots(1, 2, figsize=(12, 4))
-
-    axes[0].plot(epochs, history["train_loss"], label="train")
-    axes[0].plot(epochs, history["val_loss"], label="val")
-    axes[0].set_title("Loss")
-    axes[0].set_xlabel("Epoch")
-    axes[0].legend()
-
-    axes[1].plot(epochs, history["train_acc"], label="train")
-    axes[1].plot(epochs, history["val_acc"], label="val")
-    axes[1].set_title("Accuracy")
-    axes[1].set_xlabel("Epoch")
-    axes[1].legend()
-
-    figure.tight_layout()
-    figure.savefig(output_path, dpi=150)
-    plt.close(figure)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Food-11 单文件入门训练")
-    parser.add_argument(
-        "--data-root",
-        type=Path,
-        default=PROJECT_DIR / "data" / "food-11",
-    )
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--learning-rate", type=float, default=1e-3)
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    seed_everything(0)
-
-    train_set = FoodDataset(args.data_root, "train")
-    val_set = FoodDataset(args.data_root, "val")
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = SimpleCNN(len(CLASS_NAMES)).to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=args.learning_rate,
-        weight_decay=1e-4,
-    )
-
-    history = {
-        "train_loss": [],
-        "train_acc": [],
-        "val_loss": [],
-        "val_acc": [],
-    }
-    best_val_accuracy = 0.0
-    checkpoint_path = PROJECT_DIR / "checkpoints" / "best_simple_cnn.pth"
-    curve_path = PROJECT_DIR / "assets" / "simple_training_curves.png"
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-
-    for epoch_index in range(args.epochs):
         start_time = time.time()
-        train_loss, train_accuracy = train_one_epoch(
-            model, train_loader, optimizer, criterion, device
-        )
-        val_loss, val_accuracy = validate(model, val_loader, criterion, device)
 
-        history["train_loss"].append(train_loss)
-        history["train_acc"].append(train_accuracy)
-        history["val_loss"].append(val_loss)
-        history["val_acc"].append(val_accuracy)
+        model.train()
+        for batch_x, batch_y in train_loader:
+            x, target = batch_x.to(device), batch_y.to(device)
+            pred = model(x)
+            train_bat_loss = loss(pred, target)
+            train_bat_loss.backward()
+            optimizer.step()  # 更新参数 之后要梯度清零否则会累积梯度
+            optimizer.zero_grad()
+            train_loss += train_bat_loss.cpu().item()
+            train_acc += np.sum(np.argmax(pred.detach().cpu().numpy(), axis=1) == target.cpu().numpy())
+        plt_train_loss.append(train_loss / train_loader.__len__())
+        plt_train_acc.append(train_acc/train_loader.dataset.__len__()) #记录准确率，
 
-        if val_accuracy > best_val_accuracy:
-            best_val_accuracy = val_accuracy
-            torch.save(
-                {
-                    "epoch": epoch_index + 1,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "best_val_accuracy": best_val_accuracy,
-                },
-                checkpoint_path,
-            )
+        if semi_loader!= None:
+            for batch_x, batch_y in semi_loader:
+                x, target = batch_x.to(device), batch_y.to(device)
+                pred = model(x)
+                semi_bat_loss = loss(pred, target)
+                semi_bat_loss.backward()
+                optimizer.step()  # 更新参数 之后要梯度清零否则会累积梯度
+                optimizer.zero_grad()
+                semi_loss += semi_bat_loss.cpu().item()
+                semi_acc += np.sum(np.argmax(pred.detach().cpu().numpy(), axis=1) == target.cpu().numpy())
+            print("半监督数据集的训练准确率为", semi_acc/semi_loader.dataset.__len__())
 
-        save_curves(history, curve_path)
-        print(
-            f"[{epoch_index + 1:03d}/{args.epochs:03d}] "
-            f"{time.time() - start_time:.2f}s | "
-            f"train_loss={train_loss:.6f}, train_acc={train_accuracy:.4f} | "
-            f"val_loss={val_loss:.6f}, val_acc={val_accuracy:.4f}"
-        )
 
-    print(f"训练完成，最佳验证准确率：{best_val_accuracy:.4f}")
-    print(f"最佳模型保存在：{checkpoint_path}")
-    print(f"训练曲线保存在：{curve_path}")
+        model.eval()
+        with torch.no_grad():
+            for batch_x, batch_y in val_loader:
+                x, target = batch_x.to(device), batch_y.to(device)
+                pred = model(x)
+                val_bat_loss = loss(pred, target)
+                val_loss += val_bat_loss.cpu().item()
+                val_acc += np.sum(np.argmax(pred.detach().cpu().numpy(), axis=1) == target.cpu().numpy())
+        plt_val_loss.append(val_loss / val_loader.__len__())
+        plt_val_acc.append(val_acc / val_loader.dataset.__len__())
+
+        if epoch%3 == 0 and plt_val_acc[-1] > 0.6:
+            semi_loader = get_semi_loader(no_label_loader, model, device, thres)
+
+        if val_acc > max_acc:
+            torch.save(model, save_path)
+            max_acc = val_acc
+
+        print('[%03d/%03d] %2.2f sec(s) TrainLoss : %.6f | valLoss: %.6f Trainacc : %.6f | valacc: %.6f' % \
+              (epoch, epochs, time.time() - start_time, plt_train_loss[-1], plt_val_loss[-1], plt_train_acc[-1], plt_val_acc[-1])
+              )  # 打印训练结果。 注意python语法， %2.2f 表示小数位为2的浮点数， 后面可以对应。
+
+    plt.plot(plt_train_loss)
+    plt.plot(plt_val_loss)
+    plt.title("loss")
+    plt.legend(["train", "val"])
+    plt.show()
+
+
+    plt.plot(plt_train_acc)
+    plt.plot(plt_val_acc)
+    plt.title("acc")
+    plt.legend(["train", "val"])
+    plt.show()
+
+# path = r"F:\pycharm\beike\classification\food_classification\food-11\training\labeled"
+# train_path = r"F:\pycharm\beike\classification\food_classification\food-11\training\labeled"
+# val_path = r"F:\pycharm\beike\classification\food_classification\food-11\validation"
+def main():
+    # 使用 simple_class.py 所在目录拼接路径，不再依赖旧电脑的 F 盘路径。
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_dir, "data", "food-11_sample")
+
+    train_path = os.path.join(data_dir, "training", "labeled")
+    val_path = os.path.join(data_dir, "validation")
+    no_label_path = os.path.join(data_dir, "training", "unlabeled", "00")
+
+    train_set = food_Dataset(train_path, "train")
+    val_set = food_Dataset(val_path, "val")
+    no_label_set = food_Dataset(no_label_path, "semi")
+
+    train_loader = DataLoader(train_set, batch_size=16, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=16, shuffle=False)
+    no_label_loader = DataLoader(no_label_set, batch_size=16, shuffle=False)
+
+    # model = myModel(11)
+    model, _ = initialize_model("vgg", 11, use_pretrained=True)
+
+    lr = 0.001
+    loss = nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    save_path = os.path.join(base_dir, "model_save", "best_model.pth")
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    epochs = 15
+    thres = 0.99
+
+    train_val(model, train_loader, val_loader, no_label_loader,
+              device, epochs, optimizer, loss, thres, save_path)
 
 
 if __name__ == "__main__":

@@ -1,243 +1,233 @@
-"""Food-11 数据读取、图像增强和伪标签数据集。"""
-
-from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
-
+import numpy as np
+from torch.utils.data import Dataset,DataLoader
 import torch
+import os
+from torchvision.transforms import transforms,autoaugment
+from tqdm import tqdm
+import random
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
-from torchvision.transforms import autoaugment
+import matplotlib.pyplot as plt
+
+HW = 224
+imagenet_norm = [[0.485, 0.456, 0.406],[0.229, 0.224, 0.225]]
+
+test_transform = transforms.Compose([
+    transforms.ToTensor(),
+])              # 测试集只需要转为张量
+
+train_transform = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.RandomResizedCrop(HW),
+    transforms.RandomHorizontalFlip(),
+    autoaugment.AutoAugment(),
+    transforms.ToTensor(),
+    # transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+])                   # 训练集需要做各种变换。   效果参见https://pytorch.org/vision/stable/transforms.html
 
 
-CLASS_NAMES = (
-    "Bread",
-    "Dairy product",
-    "Dessert",
-    "Egg",
-    "Fried food",
-    "Meat",
-    "Noodles/Pasta",
-    "Rice",
-    "Seafood",
-    "Soup",
-    "Vegetable/Fruit",
-)
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-IMAGENET_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_STD = (0.229, 0.224, 0.225)
-
-
-def build_transforms(input_size: int = 224, normalize: bool = True):
-    """分别建立训练阶段和验证/测试阶段的图片变换。"""
-    train_steps = [
-        transforms.RandomResizedCrop(input_size),
-        transforms.RandomHorizontalFlip(),
-        autoaugment.AutoAugment(policy=autoaugment.AutoAugmentPolicy.IMAGENET),
-        transforms.ToTensor(),
-    ]
-    eval_steps = [
-        transforms.Resize((input_size, input_size)),
-        transforms.ToTensor(),
-    ]
-
-    if normalize:
-        normalizer = transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)
-        train_steps.append(normalizer)
-        eval_steps.append(normalizer)
-
-    return transforms.Compose(train_steps), transforms.Compose(eval_steps)
-
-
-def _image_files(directory: Path) -> List[Path]:
-    """递归取得目录中的图片，排序后保证每次读取顺序一致。"""
-    return sorted(
-        path
-        for path in directory.rglob("*")
-        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-    )
-
-
-class Food11Dataset(Dataset):
-    """
-    Food-11 数据集。
-
-    train/val 返回 ``(图片张量, 类别标签)``；
-    train_unl/test 返回 ``(图片张量, 样本下标)``，下标用于恢复原图片路径。
-    """
-
-    SPLIT_PATHS = {
-        "train": Path("training") / "labeled",
-        "train_unl": Path("training") / "unlabeled",
-        "val": Path("validation"),
-        "test": Path("testing"),
-    }
-
-    def __init__(
-        self,
-        root: str,
-        mode: str,
-        input_size: int = 224,
-        normalize: bool = True,
-    ):
-        if mode not in self.SPLIT_PATHS:
-            raise ValueError("mode 必须是 train、train_unl、val 或 test")
-
-        self.root = Path(root).expanduser().resolve()
+class foodDataset(Dataset):                      #数据集三要素： init ， getitem ， len
+    def __init__(self, path, mode):
+        y = None
+        self.transform = None
         self.mode = mode
-        self.split_dir = self.root / self.SPLIT_PATHS[mode]
 
-        if not self.split_dir.is_dir():
-            raise FileNotFoundError(
-                f"找不到数据目录：{self.split_dir}\n"
-                "请按照 data/README.md 中的结构放置 Food-11 数据集。"
-            )
+        pathDict = {'train':'training/labeled','train_unl':'training/unlabeled', 'val':'validation', 'test':'testing'}
+        imgPaths = path +'/'+ pathDict[mode]                       # 定义路径
 
-        train_transform, eval_transform = build_transforms(input_size, normalize)
-        self.transform = train_transform if mode in {"train", "train_unl"} else eval_transform
+        if mode == 'test':
+            x = self._readfile(imgPaths,label=False)
+            self.transform = test_transform                         #从文件读数据,测试机和无标签数据没有标签， trans方式也不一样
+        elif mode == 'train':
+            x, y =self._readfile(imgPaths,label=True)
+            self.transform = train_transform
+        elif mode == 'val':
+            x, y =self._readfile(imgPaths,label=True)
+            self.transform = test_transform
+        elif mode == 'train_unl':
+            x = self._readfile(imgPaths,label=False)
+            self.transform = train_transform
 
-        self.image_paths: List[Path] = []
-        self.labels: Optional[List[int]] = None
+        if y is not None:                                    # 注意， 分类的标签必须转换为长整型： int64.
+            y = torch.LongTensor(y)
+        self.x, self.y = x, y
 
-        if mode in {"train", "val"}:
-            self.image_paths, self.labels = self._collect_labeled_images()
+    def __getitem__(self, index):                        # getitem 用于根据标签取数据
+        orix = self.x[index]                              # 取index的图片
+
+        if self.transform == None:
+            xT = torch.tensor(orix).float()
         else:
-            self.image_paths = _image_files(self.split_dir)
+            xT = self.transform(orix)                     # 如果规定了transformer， 则需要transf
 
-        if not self.image_paths:
-            raise RuntimeError(f"目录中没有找到图片：{self.split_dir}")
+        if self.y is not None:                       # 有标签， 则需要返回标签。 这里额外返回了原图， 方便后面画图。
+            y = self.y[index]
+            return xT, y, orix
+        else:
+            return xT, orix
 
-        print(f"{mode}：读取到 {len(self.image_paths)} 张图片")
+    def _readfile(self,path, label=True):                   # 定义一个读文件的函数
+        if label:                                             # 有无标签， 文件结构是不一样的。
+            x, y = [], []
+            for i in tqdm(range(11)):                           # 有11类
+                label = '/%02d/'%i                                 # %02必须为两位。 符合文件夹名字
+                imgDirpath = path+label
+                imglist = os.listdir(imgDirpath)                    # listdir 可以列出文件夹下所有文件。
+                xi = np.zeros((len(imglist), HW, HW, 3), dtype=np.uint8)
+                yi = np.zeros((len(imglist)), dtype=np.uint8)           # 先把放数据的格子打好。 x的维度是 照片数量*H*W*3
+                for j, each in enumerate(imglist):
+                    imgpath = imgDirpath + each
+                    img = Image.open(imgpath)                  # 用image函数读入照片， 并且resize。
+                    img = img.resize((HW, HW))
+                    xi[j,...] = img                           #在第j个位置放上数据和标签。
+                    yi[j] = i
+                if i == 0:
+                    x = xi
+                    y = yi
+                else:
+                    x = np.concatenate((x, xi), axis=0)             # 将11个文件夹的数据合在一起。
+                    y = np.concatenate((y, yi), axis=0)
+            print('读入有标签数据%d个 '%len(x))
+            return x, y
+        else:
+            imgDirpath = path + '/00/'
+            imgList = os.listdir(imgDirpath)
+            x = np.zeros((len(imgList), HW, HW ,3),dtype=np.uint8)
+            for i, each in enumerate(imgList):
+                imgpath = imgDirpath + each
+                img = Image.open(imgpath)
+                img = img.resize((HW, HW))
+                x[i,...] = img
+            return x
 
-    def _collect_labeled_images(self) -> Tuple[List[Path], List[int]]:
-        image_paths: List[Path] = []
-        labels: List[int] = []
+    def __len__(self):                      # len函数 负责返回长度。
+        return len(self.x)
 
-        expected_directories = {f"{index:02d}" for index in range(len(CLASS_NAMES))}
-        existing_directories = {
-            path.name for path in self.split_dir.iterdir() if path.is_dir()
-        }
+class noLabDataset(Dataset):
+    def __init__(self,dataloader, model, device, thres=0.85):
+        super(noLabDataset, self).__init__()
+        self.model = model      #模型也要传入进来
+        self.device = device
+        self.thres = thres      #这里置信度阈值 我设置的 0.99
+        x, y = self._model_pred(dataloader)        #核心， 获得新的训练数据
+        if x == []:                            # 如果没有， 就不启用这个数据集
+            self.flag = False
+        else:
+            self.flag = True
+            self.x = np.array(x)
+            self.y = torch.LongTensor(y)
+        # self.x = np.concatenate((np.array(x), train_dataset.x),axis=0)
+        # self.y = torch.cat(((torch.LongTensor(y),train_dataset.y)),dim=0)
+        self.transformers = train_transform
 
-        ignored = sorted(existing_directories - expected_directories)
-        if ignored:
-            print(
-                "提示：以下目录不属于 Food-11 的 00–10 类，已忽略："
-                + ", ".join(ignored)
-            )
+    def _model_pred(self, dataloader):
+        model = self.model
+        device = self.device
+        thres = self.thres
+        pred_probs = []
+        labels = []
+        x = []
+        y = []
+        with torch.no_grad():                                  # 不训练， 要关掉梯度
+            for data in dataloader:                            # 取数据
+                imgs = data[0].to(device)
+                pred = model(imgs)                              #预测
+                soft = torch.nn.Softmax(dim=1)             #softmax 可以返回一个概率分布
+                pred_p = soft(pred)
+                pred_max, preds = pred_p.max(1)          #得到最大值 ，和最大值的位置 。 就是置信度和标签。
+                pred_probs.extend(pred_max.cpu().numpy().tolist())
+                labels.extend(preds.cpu().numpy().tolist())        #把置信度和标签装起来
 
-        for label in range(len(CLASS_NAMES)):
-            class_dir = self.split_dir / f"{label:02d}"
-            if not class_dir.is_dir():
-                raise FileNotFoundError(f"缺少类别目录：{class_dir}")
+        for index, prob in enumerate(pred_probs):
+            if prob > thres:                                  #如果置信度超过阈值， 就转化为可信的训练数据
+                x.append(dataloader.dataset[index][1])
+                y.append(labels[index])
+        return x, y
 
-            class_images = _image_files(class_dir)
-            image_paths.extend(class_images)
-            labels.extend([label] * len(class_images))
+    def __getitem__(self, index):                          # getitem 和len
+        x = self.x[index]
+        x= self.transformers(x)
+        y = self.y[index]
+        return x, y
 
-        return image_paths, labels
+    def __len__(self):
+        return len(self.x)
 
-    def __getitem__(self, index: int):
-        image_path = self.image_paths[index]
-        with Image.open(image_path) as image:
-            image = image.convert("RGB")
-            image_tensor = self.transform(image)
-
-        if self.labels is None:
-            return image_tensor, index
-
-        return image_tensor, torch.tensor(self.labels[index], dtype=torch.long)
-
-    def __len__(self) -> int:
-        return len(self.image_paths)
-
-
-class PseudoLabelDataset(Dataset):
-    """保存通过高置信度预测筛选出的无标签图片。"""
-
-    def __init__(
-        self,
-        image_paths: Sequence[Path],
-        labels: Sequence[int],
-        transform,
-    ):
-        self.image_paths = list(image_paths)
-        self.labels = list(labels)
-        self.transform = transform
-
-    def __getitem__(self, index: int):
-        with Image.open(self.image_paths[index]) as image:
-            image = image.convert("RGB")
-            image_tensor = self.transform(image)
-        return image_tensor, torch.tensor(self.labels[index], dtype=torch.long)
-
-    def __len__(self) -> int:
-        return len(self.image_paths)
-
-
-def get_data_loader(
-    root: str,
-    mode: str,
-    batch_size: int,
-    input_size: int = 224,
-    normalize: bool = True,
-    num_workers: int = 0,
-) -> DataLoader:
-    """建立指定数据分区的 DataLoader。Windows 初学环境默认不开子进程。"""
-    dataset = Food11Dataset(root, mode, input_size=input_size, normalize=normalize)
-    shuffle = mode == "train"
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available(),
-    )
-
-
-def get_pseudo_label_loader(
-    unlabeled_loader: DataLoader,
-    model: torch.nn.Module,
-    device: torch.device,
-    threshold: float = 0.99,
-) -> Optional[DataLoader]:
-    """把置信度达到阈值的无标签图片组成新的训练 DataLoader。"""
-    model.eval()
-    selected_paths: List[Path] = []
-    selected_labels: List[int] = []
-
-    with torch.no_grad():
-        for images, indices in unlabeled_loader:
-            images = images.to(device)
-            probabilities = torch.softmax(model(images), dim=1)
-            confidence, predicted_labels = probabilities.max(dim=1)
-
-            keep = confidence >= threshold
-            kept_indices = indices[keep.cpu()].tolist()
-            kept_labels = predicted_labels[keep].cpu().tolist()
-
-            for sample_index, label in zip(kept_indices, kept_labels):
-                selected_paths.append(unlabeled_loader.dataset.image_paths[sample_index])
-                selected_labels.append(label)
-
-    if not selected_paths:
-        print(f"没有置信度达到 {threshold:.2f} 的无标签图片，本轮不启用伪标签。")
+def get_semi_loader(dataloader,model, device, thres):
+    semi_set = noLabDataset(dataloader, model, device, thres)
+    if semi_set.flag:                                                    #不可用时返回空
+        dataloader = DataLoader(semi_set, batch_size=dataloader.batch_size,shuffle=True)
+        return dataloader
+    else:
         return None
 
-    print(f"伪标签筛选出 {len(selected_paths)} 张图片。")
-    dataset = PseudoLabelDataset(
-        selected_paths,
-        selected_labels,
-        transform=unlabeled_loader.dataset.transform,
-    )
-    return DataLoader(
-        dataset,
-        batch_size=unlabeled_loader.batch_size,
-        shuffle=True,
-        num_workers=unlabeled_loader.num_workers,
-        pin_memory=torch.cuda.is_available(),
-    )
+
+def getDataLoader(path, mode, batchSize):
+    assert mode in ['train', 'train_unl', 'val', 'test']
+    dataset = foodDataset(path, mode)
+    if mode in ['test','train_unl','val']:
+        shuffle = False
+    else:
+        shuffle = True
+    loader = DataLoader(dataset,batchSize,shuffle=shuffle)                      #装入loader
+    return loader
 
 
-# 兼容博主原代码中的驼峰命名，建议新代码使用 get_data_loader。
-getDataLoader = get_data_loader
+def samplePlot(dataset, isloader=True, isbat=False,ori=None):           #画图， 此函数不需要掌握。
+    if isloader:
+        dataset = dataset.dataset
+    rows = 3
+    cols = 3
+    num = rows*cols
+    # if isbat:
+    #     dataset = dataset * 225
+    datalen = len(dataset)
+    randomNum = []
+    while len(randomNum) < num:
+        temp = random.randint(0,datalen-1)
+        if temp not in randomNum:
+            randomNum.append(temp)
+    fig, axs = plt.subplots(nrows=rows,ncols=cols,squeeze=False)
+    index = 0
+    for i in range(rows):
+        for j in range(cols):
+            ax = axs[i, j]
+            if isbat:
+                ax.imshow(np.array(dataset[randomNum[index]].cpu().permute(1,2,0)))
+            else:
+                ax.imshow(np.array(dataset[randomNum[index]][0].cpu().permute(1,2,0)))
+            index += 1
+            ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+
+    plt.show()
+    plt.tight_layout()
+    if ori != None:
+        fig2, axs2 = plt.subplots(nrows=rows,ncols=cols,squeeze=False)
+        index = 0
+        for i in range(rows):
+            for j in range(cols):
+                ax = axs2[i, j]
+                if isbat:
+                    ax.imshow(np.array(dataset[randomNum[index]][-1]))
+                else:
+                    ax.imshow(np.array(dataset[randomNum[index]][-1]))
+                index += 1
+                ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+        plt.show()
+        plt.tight_layout()
+
+
+
+
+
+if __name__ == '__main__':   #运行的模块，  如果你运行的模块是当前模块
+    print("你运行的是data.py文件")
+    filepath = '../food-11_sample'
+    train_loader = getDataLoader(filepath, 'train', 8)
+    for i in range(3):
+        samplePlot(train_loader,True,isbat=False,ori=True)
+    val_loader = getDataLoader(filepath, 'val', 8)
+    for i in range(100):
+        samplePlot(val_loader,True,isbat=False,ori=True)
+    ##########################
+

@@ -1,217 +1,124 @@
-"""Food-11 的训练、验证、保存最佳模型和绘图逻辑。"""
-
-import time
-from pathlib import Path
-from typing import Dict, Optional
-
-import matplotlib.pyplot as plt
-import torch
-from torch.utils.data import DataLoader
 from tqdm import tqdm
-
-from .data import get_pseudo_label_loader
-
-
-def _run_training_loader(
-    model: torch.nn.Module,
-    loader: DataLoader,
-    optimizer: torch.optim.Optimizer,
-    criterion: torch.nn.Module,
-    device: torch.device,
-):
-    total_loss = 0.0
-    correct = 0
-    total = 0
-
-    model.train()
-    for images, labels in tqdm(loader, leave=False):
-        images = images.to(device)
-        labels = labels.to(device)
-
-        optimizer.zero_grad()
-        logits = model(images)
-        loss = criterion(logits, labels)
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item() * images.size(0)
-        correct += (logits.argmax(dim=1) == labels).sum().item()
-        total += images.size(0)
-
-    return total_loss / total, correct / total
+import torch
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+from model_utils.data import samplePlot, get_semi_loader
 
 
-def _run_validation_loader(
-    model: torch.nn.Module,
-    loader: DataLoader,
-    criterion: torch.nn.Module,
-    device: torch.device,
-):
-    total_loss = 0.0
-    correct = 0
-    total = 0
+def train_val(para):
 
-    model.eval()
-    with torch.no_grad():
-        for images, labels in loader:
-            images = images.to(device)
-            labels = labels.to(device)
+########################################################
+    model = para['model']
+    semi_loader = para['no_label_Loader']
+    train_loader =para['train_loader']
+    val_loader = para['val_loader']
+    optimizer = para['optimizer']
+    loss = para['loss']
+    epoch = para['epoch']
+    device = para['device']
+    save_path = para['save_path']
+    save_acc = para['save_acc']
+    pre_path = para['pre_path']
+    max_acc = para['max_acc']
+    val_epoch = para['val_epoch']
+    acc_thres = para['acc_thres']
+    conf_thres = para['conf_thres']
+    do_semi= para['do_semi']
 
-            logits = model(images)
-            loss = criterion(logits, labels)
-
-            total_loss += loss.item() * images.size(0)
-            correct += (logits.argmax(dim=1) == labels).sum().item()
-            total += images.size(0)
-
-    return total_loss / total, correct / total
-
-
-def _save_curves(history: Dict[str, list], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    epochs = range(1, len(history["train_loss"]) + 1)
-
-    figure, axes = plt.subplots(1, 2, figsize=(12, 4))
-    axes[0].plot(epochs, history["train_loss"], label="train")
-    axes[0].plot(epochs, history["val_loss"], label="val")
-    axes[0].set_title("Loss")
-    axes[0].set_xlabel("Epoch")
-    axes[0].legend()
-
-    axes[1].plot(epochs, history["train_acc"], label="train")
-    axes[1].plot(epochs, history["val_acc"], label="val")
-    axes[1].set_title("Accuracy")
-    axes[1].set_xlabel("Epoch")
-    axes[1].legend()
-
-    figure.tight_layout()
-    figure.savefig(output_path, dpi=150)
-    plt.close(figure)
-
-
-def train_model(
-    model: torch.nn.Module,
-    train_loader: DataLoader,
-    val_loader: DataLoader,
-    optimizer: torch.optim.Optimizer,
-    criterion: torch.nn.Module,
-    device: torch.device,
-    epochs: int,
-    checkpoint_path: str,
-    curve_path: str,
-    model_name: str,
-    unlabeled_loader: Optional[DataLoader] = None,
-    use_semi_supervised: bool = False,
-    semi_start_accuracy: float = 0.70,
-    pseudo_label_threshold: float = 0.99,
-    pseudo_label_interval: int = 3,
-) -> Dict[str, list]:
-    """训练模型；按照验证准确率保存最佳 checkpoint。"""
+    semi_epoch = 10
+###################################################
+    no_label_Loader = None
+    if pre_path != None:
+        model = torch.load(pre_path)
     model = model.to(device)
-    checkpoint = Path(checkpoint_path)
-    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    # model = torch.nn.DataParallel(model).to(device)
+    # model.device_ids = [0,1]
 
-    history = {
-        "train_loss": [],
-        "train_acc": [],
-        "val_loss": [],
-        "val_acc": [],
-    }
-    best_val_accuracy = 0.0
-    pseudo_loader = None
-
-    for epoch_index in range(epochs):
+    plt_train_loss = []
+    plt_train_acc = []
+    plt_val_loss = []
+    plt_val_acc = []
+    plt_semi_acc = []
+    val_rel = []
+    for i in range(epoch):
         start_time = time.time()
+        model.train()
+        train_loss = 0.0
+        train_acc = 0.0
+        val_acc = 0.0
+        val_loss = 0.0
+        semi_acc = 0.0
 
-        train_loss, train_accuracy = _run_training_loader(
-            model, train_loader, optimizer, criterion, device
-        )
+        for data in tqdm(train_loader):                    #取数据
+            optimizer.zero_grad()                           # 梯度置0
+            x, target = data[0].to(device), data[1].to(device)
+            pred = model(x)                                 #模型前向
+            bat_loss = loss(pred, target)                   # 算交叉熵loss
+            bat_loss.backward()                                 # 回传梯度
+            optimizer.step()                                    # 根据梯度更新
+            train_loss += bat_loss.item()    #.detach 表示去掉梯度
+            train_acc += np.sum(np.argmax(pred.cpu().data.numpy(),axis=1) == data[1].numpy())
 
-        if pseudo_loader is not None:
-            pseudo_loss, pseudo_accuracy = _run_training_loader(
-                model, pseudo_loader, optimizer, criterion, device
-            )
-            print(
-                f"伪标签训练：loss={pseudo_loss:.6f}, "
-                f"accuracy={pseudo_accuracy:.4f}"
-            )
+            # 预测值和标签相等，正确数就加1.  相等多个， 就加几。
 
-        val_loss, val_accuracy = _run_validation_loader(
-            model, val_loader, criterion, device
-        )
+        if no_label_Loader != None:
+            for data in tqdm(no_label_Loader):
+                optimizer.zero_grad()
+                x , target = data[0].to(device), data[1].to(device)
+                pred = model(x)
+                bat_loss = loss(pred, target)
+                bat_loss.backward()
+                optimizer.step()
 
-        history["train_loss"].append(train_loss)
-        history["train_acc"].append(train_accuracy)
-        history["val_loss"].append(val_loss)
-        history["val_acc"].append(val_accuracy)
+                semi_acc += np.sum(np.argmax(pred.cpu().data.numpy(),axis=1)== data[1].numpy())
+            plt_semi_acc .append(semi_acc/no_label_Loader.dataset.__len__())
+            print('semi_acc:', plt_semi_acc[-1])
 
-        if val_accuracy > best_val_accuracy:
-            best_val_accuracy = val_accuracy
-            torch.save(
-                {
-                    "epoch": epoch_index + 1,
-                    "model_name": model_name,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "best_val_accuracy": best_val_accuracy,
-                },
-                checkpoint,
-            )
+        plt_train_loss.append(train_loss/train_loader.__len__())
+        plt_train_acc.append(train_acc/train_loader.dataset.__len__())
+        if i % val_epoch == 0:
+            model.eval()
+            with torch.no_grad():
+                for valdata in val_loader:
+                    val_x , val_target = valdata[0].to(device), valdata[1].to(device)
+                    val_pred = model(val_x)
+                    val_bat_loss = loss(val_pred, val_target)
+                    val_loss += val_bat_loss.cpu().item()
 
-        print(
-            f"[{epoch_index + 1:03d}/{epochs:03d}] "
-            f"{time.time() - start_time:.2f}s | "
-            f"train_loss={train_loss:.6f}, train_acc={train_accuracy:.4f} | "
-            f"val_loss={val_loss:.6f}, val_acc={val_accuracy:.4f} | "
-            f"best={best_val_accuracy:.4f}"
-        )
-
-        should_refresh_pseudo_labels = (
-            use_semi_supervised
-            and unlabeled_loader is not None
-            and val_accuracy >= semi_start_accuracy
-            and (epoch_index + 1) % pseudo_label_interval == 0
-        )
-        if should_refresh_pseudo_labels:
-            pseudo_loader = get_pseudo_label_loader(
-                unlabeled_loader,
-                model,
-                device,
-                threshold=pseudo_label_threshold,
-            )
-
-        _save_curves(history, Path(curve_path))
-
-    print(f"训练完成，最佳验证准确率：{best_val_accuracy:.4f}")
-    print(f"最佳模型保存在：{checkpoint}")
-    print(f"训练曲线保存在：{curve_path}")
-    return history
+                    val_acc += np.sum(np.argmax(val_pred.cpu().data.numpy(), axis=1) == valdata[1].numpy())
+                    val_rel.append(val_pred)
 
 
-def train_val(parameters: dict):
-    """兼容原项目 ``train_val(trainpara)`` 的调用形式。"""
-    return train_model(
-        model=parameters["model"],
-        train_loader=parameters["train_loader"],
-        val_loader=parameters["val_loader"],
-        optimizer=parameters["optimizer"],
-        criterion=parameters.get("criterion", parameters.get("loss")),
-        device=parameters["device"],
-        epochs=parameters.get("epochs", parameters.get("epoch")),
-        checkpoint_path=parameters.get("checkpoint_path", parameters.get("save_path")),
-        curve_path=parameters.get("curve_path", "assets/training_curves.png"),
-        model_name=parameters.get("model_name", "unknown"),
-        unlabeled_loader=parameters.get(
-            "unlabeled_loader", parameters.get("no_label_Loader")
-        ),
-        use_semi_supervised=parameters.get(
-            "use_semi_supervised", parameters.get("do_semi", False)
-        ),
-        semi_start_accuracy=parameters.get(
-            "semi_start_accuracy", parameters.get("acc_thres", 0.70)
-        ),
-        pseudo_label_threshold=parameters.get(
-            "pseudo_label_threshold", parameters.get("conf_thres", 0.99)
-        ),
-        pseudo_label_interval=parameters.get("pseudo_label_interval", 3),
-    )
+            val_acc = val_acc/val_loader.dataset.__len__()
+            if val_acc > max_acc:
+                torch.save(model, save_path)
+                max_acc = val_acc
+
+
+            plt_val_loss.append(val_loss/val_loader.__len__())
+            plt_val_acc.append(val_acc)
+            print('[%03d/%03d] %2.2f sec(s) TrainAcc : %3.6f TrainLoss : %3.6f | valAcc: %3.6f valLoss: %3.6f  ' % \
+                  (i, epoch, time.time()-start_time, plt_train_acc[-1], plt_train_loss[-1], plt_val_acc[-1], plt_val_loss[-1])
+                  )
+        else:
+            plt_val_loss.append(plt_val_loss[-1])
+            plt_val_acc.append(plt_val_acc[-1])
+
+
+        if do_semi and plt_val_acc[-1] > acc_thres and i % semi_epoch==0:         # 如果启用半监督， 且精确度超过阈值， 则开始。
+            no_label_Loader = get_semi_loader(semi_loader, model, device, conf_thres)
+
+
+    plt.plot(plt_train_loss)                   # 画图。
+    plt.plot(plt_val_loss)
+    plt.title('loss')
+    plt.legend(['train', 'val'])
+    plt.show()
+
+    plt.plot(plt_train_acc)
+    plt.plot(plt_val_acc)
+    plt.title('Accuracy')
+    plt.legend(['train', 'val'])
+    plt.savefig('acc.png')
+    plt.show()

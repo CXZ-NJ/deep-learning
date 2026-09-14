@@ -1,68 +1,50 @@
-# Food-11 数据放置说明
+# 数据放置说明
 
-数据集图片不会提交到 GitHub。完整数据量较大，请在本地下载并解压。
+图片数据量较大，不上传到 GitHub，只在自己的电脑中保存。
 
-课程数据地址：
+数据集地址：<https://www.kaggle.com/datasets/zhaopang/ml2021springhw3>
 
-- <https://www.kaggle.com/datasets/zhaopang/ml2021springhw3>
+## 运行 `simple_class.py`
 
-Food-11 的 11 个类别编号：
-
-| 编号 | 英文类别 | 中文理解 |
-|---|---|---|
-| `00` | Bread | 面包 |
-| `01` | Dairy product | 乳制品 |
-| `02` | Dessert | 甜点 |
-| `03` | Egg | 鸡蛋 |
-| `04` | Fried food | 油炸食品 |
-| `05` | Meat | 肉类 |
-| `06` | Noodles/Pasta | 面条/意大利面 |
-| `07` | Rice | 米饭 |
-| `08` | Seafood | 海鲜 |
-| `09` | Soup | 汤 |
-| `10` | Vegetable/Fruit | 蔬菜/水果 |
-
-下载后，把数据整理为以下结构：
+将小型示例数据放到：
 
 ```text
-03_food_classification/
-└── data/
-    └── food-11/
-        ├── training/
-        │   ├── labeled/
-        │   │   ├── 00/
-        │   │   ├── 01/
-        │   │   ├── ...
-        │   │   └── 10/
-        │   └── unlabeled/
-        │       └── 00/
-        ├── validation/
-        │   ├── 00/
-        │   ├── 01/
-        │   ├── ...
-        │   └── 10/
-        └── testing/
-            └── 00/
+03_food_classification/data/food-11_sample/
 ```
 
-仓库代码使用的是 `00–10` 共 11 类。原来的 `food-11_sample` 中还存在一个 `11` 目录，但 Food-11 模型没有第 12 个输出，因此修复后的代码会明确提示并忽略该目录。
+目录结构：
 
-完成放置后，可以先运行单文件版本：
-
-```bash
-python simple_class.py --epochs 1
+```text
+food-11_sample/
+├── training/
+│   ├── labeled/
+│   │   ├── 00/
+│   │   ├── 01/
+│   │   ├── ...
+│   │   └── 10/
+│   └── unlabeled/
+│       └── 00/
+└── validation/
+    ├── 00/
+    ├── 01/
+    ├── ...
+    └── 10/
 ```
 
-也可以直接指定电脑上现有的数据位置，不必复制完整数据集：
+注意：你当前的 sample 数据中还有一个 `11` 文件夹，但代码设置的是 11 分类，只循环 `00–10`，所以 `11` 不会参与训练。建议以后制作 sample 时只保留 `00–10`。
 
-```bash
-python simple_class.py --data-root "D:/你的目录/food-11" --epochs 1
+## 运行 `main.py`
+
+`main.py` 默认同样读取：
+
+```text
+03_food_classification/data/food-11_sample/
 ```
 
-模块化版本：
+如果要改成完整数据，把完整数据放到：
 
-```bash
-python main.py --data-root "D:/你的目录/food-11" --epochs 10
+```text
+03_food_classification/data/food-11/
 ```
 
-数据目录已经写入仓库根目录的 `.gitignore`，不会被普通的 `git add` 加入 GitHub。
+然后在 `main.py` 中注释 sample 路径、启用下一行完整数据路径即可。
