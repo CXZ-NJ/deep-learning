@@ -230,8 +230,6 @@ matplotlib.use("TKAgg")
 | `Dataset` | 自定义数据集 |
 | `DataLoader` | 一批一批加载数据 |
 
-> ⚠️ 博主原版里还有 `import pandas`，但代码全程没有真正用到它（已删除）。以后自己写代码时，用不到的 import 删掉比较好。
-
 ---
 
 ## 4.1 `matplotlib.use("TKAgg")`
