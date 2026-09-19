@@ -1,4 +1,6 @@
 import random
+from datetime import dim
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -127,7 +129,7 @@ class semiDataset(Dataset):
                 bat_x = bat_x.to(device)
                 pred = model(bat_x)
                 pred_soft = soft(pred)
-                pred_max, pred_value = pred_soft.max(1)
+                pred_max, pred_value = pred_soft.max(dim=1)
                 pred_prob.extend(pred_max.cpu().numpy().tolist())
                 labels.extend(pred_value.cpu().numpy().tolist())
 
@@ -263,7 +265,7 @@ def train_val(model, train_loader, val_loader, no_label_loader, device, epochs, 
 
         if val_acc > max_acc:
             torch.save(model, save_path)
-            max_acc = val_acc
+            max_acc = val_acc #实际存的预测正确的图片数量
 
         print('[%03d/%03d] %2.2f sec(s) TrainLoss : %.6f | valLoss: %.6f Trainacc : %.6f | valacc: %.6f' % \
               (epoch, epochs, time.time() - start_time, plt_train_loss[-1], plt_val_loss[-1], plt_train_acc[-1], plt_val_acc[-1])
@@ -285,38 +287,30 @@ def train_val(model, train_loader, val_loader, no_label_loader, device, epochs, 
 # path = r"F:\pycharm\beike\classification\food_classification\food-11\training\labeled"
 # train_path = r"F:\pycharm\beike\classification\food_classification\food-11\training\labeled"
 # val_path = r"F:\pycharm\beike\classification\food_classification\food-11\validation"
-def main():
-    # 使用 simple_class.py 所在目录拼接路径，不再依赖旧电脑的 F 盘路径。
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(base_dir, "data", "food-11_sample")
+train_path = r"F:\pycharm\beike\classification\food_classification\food-11_sample\training\labeled"
+val_path = r"F:\pycharm\beike\classification\food_classification\food-11_sample\validation"
+no_label_path = r"F:\pycharm\beike\classification\food_classification\food-11_sample\training\unlabeled\00"
 
-    train_path = os.path.join(data_dir, "training", "labeled")
-    val_path = os.path.join(data_dir, "validation")
-    no_label_path = os.path.join(data_dir, "training", "unlabeled", "00")
+train_set = food_Dataset(train_path, "train")
+val_set = food_Dataset(val_path, "val")
+no_label_set = food_Dataset(no_label_path, "semi")
 
-    train_set = food_Dataset(train_path, "train")
-    val_set = food_Dataset(val_path, "val")
-    no_label_set = food_Dataset(no_label_path, "semi")
+train_loader = DataLoader(train_set, batch_size=16, shuffle=True)
+val_loader = DataLoader(val_set, batch_size=16, shuffle=False)
+no_label_loader = DataLoader(no_label_set, batch_size=16, shuffle=False)
 
-    train_loader = DataLoader(train_set, batch_size=16, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=16, shuffle=False)
-    no_label_loader = DataLoader(no_label_set, batch_size=16, shuffle=False)
-
-    # model = myModel(11)
-    model, _ = initialize_model("vgg", 11, use_pretrained=True)
-
-    lr = 0.001
-    loss = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    save_path = os.path.join(base_dir, "model_save", "best_model.pth")
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    epochs = 15
-    thres = 0.99
-
-    train_val(model, train_loader, val_loader, no_label_loader,
-              device, epochs, optimizer, loss, thres, save_path)
+# model = myModel(11)
+model, _ = initialize_model("vgg", 11, use_pretrained=True)
 
 
-if __name__ == "__main__":
-    main()
+lr = 0.001
+loss = nn.CrossEntropyLoss()
+optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+save_path = "model_save/best_model.pth"
+epochs = 15
+thres = 0.99
+
+
+
+train_val(model, train_loader, val_loader, no_label_loader, device, epochs, optimizer, loss, thres, save_path)
